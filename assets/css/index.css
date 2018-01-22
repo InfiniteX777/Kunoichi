@@ -1,0 +1,57 @@
+body {
+	font-family: calibri;
+}
+
+iframe {
+	color: #ff0000;
+	border: #ff0000 3px solid;
+	height: 300;
+}
+
+[blank] {
+	visibility: hidden;
+}
+
+tr {
+	font-size: 16;
+}
+
+th {
+	height: 28px;
+	color: var(--purple);
+}
+
+td {
+	vertical-align: top;
+}
+
+time {
+	position: relative;
+	background-color: #ff0000;
+	top: 0;
+	height: 50%;
+	width: 100%;
+	text-align: right;
+	vertical-align:text-bottom;
+	display: block;
+}
+
+item {
+	position: relative;
+	background-color: #ff0000;
+	width: 100%;
+	text-align: right;
+	vertical-align:text-bottom;
+	display: block;
+}
+
+table {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	background-color: #ff0000 solid;
+	top: 0;
+	left: 0;
+	table-layout: fixed;
+	border-collapse: collapse;
+}
