@@ -1,4 +1,9 @@
 const {BrowserWindow, ipcMain} = require("electron");
+const {net} = require('electron')
+const pdfjs = require("pdfjs-dist")
+const data = {
+	Term: null,
+}
 const list_listener = {};
 const list_request = {};
 // Destroy frozen requests.
@@ -7,20 +12,19 @@ const timeout = 5 * 1000;
 /**
  * Send that wonderful data.
 **/
-function send(win, course, arg) {
-	if (list_listener[course]) {
+function send(channel, arg) {
+	if (list_listener[channel]) {
 		for (i = 0;
-			 i < list_listener[course].length;
+			 i < list_listener[channel].length;
 			 i++) {
-			list_listener[course][i](arg);
+			list_listener[channel][i](arg);
 		}
 
-		delete list_listener[course];
+		delete list_listener[channel];
 	}
 
 	// Delete everything.
-	win.destroy();
-	delete list_request[course];
+	delete list_request[channel];
 }
 
 /**
@@ -32,7 +36,7 @@ function parse(arg) {
 	for (var i = 0; i < arg.length; i++) {
 		let id = Number(arg[i][0]),
 			name = arg[i][1].match(/\S+/g),
-			section = arg[i][2],
+			section = arg[i][2].match(/\S+/g),
 			day = arg[i][3].match(/\S/g),
 			time = arg[i][4].match(/\d+/g),
 			room = arg[i][5],
@@ -43,6 +47,7 @@ function parse(arg) {
 
 		id = id ? id : null;
 		name = name ? name[0] : null;
+		section = section ? section[0] : null;
 		day = day ? day : [];
 		time = time ? time : [];
 		cap = cap ? cap : null;
@@ -84,7 +89,8 @@ this.request = (course) => {
 	// Set timeout.
 	setTimeout(() => {
 		if (!sent) {
-			send(win, course, -1);
+			send(course, -1);
+			win.destroy();
 		}
 	}, timeout)
 
@@ -156,7 +162,8 @@ if (navigator.onLine) {\
 
 	ipcMain.once("MOWER_" + course, (event, arg) => {
 		sent = true;
-		send(win, course, parse(arg));
+		send(course, parse(arg));
+		win.destroy();
 	})
 }
 
@@ -174,4 +181,65 @@ this.once = (channel, listener) => {
 
 	list_listener[channel]
 		[list_listener[channel].length] = listener;
+}
+
+/**
+ * Request for the current year and term from DLSU's 'enroll_ug.pdf'.
+ * Will send data through '_TERMCOLL' channel.
+ * Use 'mower.once("_TERMCOLL", callback)' to catch data.
+**/
+this.requestTerm = () => {
+	let req = net.request(
+		"http://www.dlsu.edu.ph/" +
+		"offices/registrar/schedules/enroll_ug.pdf"
+	);
+
+	req.on("response", (res) => {
+		let dat = [];
+		let chunks = [];
+		let p = 0;
+
+		res.on("data", (chunk) => chunks.push(chunk));
+		res.on("end", () => {
+			for (let n = 0; n < chunks.length; n++)
+				for (let i = 0; i < chunks[n].length; i++)
+					dat.push(chunks[n][i]);
+
+			pdfjs.getDocument(Buffer.from(dat)).then((doc) => {
+				doc.getPage(1).then((page) => {
+					page.getTextContent().then((content) => {
+						let items = content.items;
+						let str = "";
+						let p = 0;
+
+						for (let i = 0; i < items.length; i++) {
+							str += items[i].str;
+
+							if (!p) {
+								let v = str.search("AY "); // lmao
+
+								if (v != -1) {
+									str = str.substring(v+3);
+									p++;
+								}
+							} else if (p == 1) {
+								let v = str.search("Term ");
+
+								if (v != -1)
+									p = v + 6;
+							} else if (str.length >= p) {
+								str = str.substring(0, p);
+								data.Term = str;
+
+								send("_TERMCOLL", str);
+
+								return;
+							}
+						}
+					});
+				});
+			});
+		});
+	});
+	req.end()
 }

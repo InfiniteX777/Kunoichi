@@ -1,5 +1,4 @@
 //Service Temporarily Unavailable h1
-
 const {ipcMain,
 	   app,
 	   BrowserWindow} = require("electron");
@@ -15,6 +14,8 @@ try {
 } catch(err) {}
 
 ipcMain.on("request", (event, course) => {
+	course = course.toUpperCase();
+
 	if (!data[course]) {
 		// Request data.
 		mower.once(course, (arg) => {
@@ -22,7 +23,9 @@ ipcMain.on("request", (event, course) => {
 			if (event.sender.isDestroyed())
 				return;
 
-			if (arg === -2 || arg === -1) {
+			if (arg === -2 ||
+				arg === -1 ||
+				arg.length == 0) {
 				// Find a cached data in storage.
 				try {
 					data[course] = 
@@ -90,6 +93,12 @@ function init() {
 			)
 		);
 	});
+
+	mower.once("_TERMCOLL", (arg) => {
+		console.log(arg);
+	})
+
+	mower.requestTerm();
 }
 
 app.on("ready", init);

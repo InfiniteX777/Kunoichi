@@ -1,12 +1,9 @@
 :root {
 	--purple: #7f3f5f;
-}
-
-@keyframes fadeIn {
-	0% {
-		opacity: 0;
-	}
-	100% {
-		opacity: 1;
-	}
+	--green: #3f7f3f;
+	--green-light: #7fbf7f;
+	--red: #7f3f3f;
+	--red-light: #bf7f7f;
+	--yellow: #7f7f3f;
+	--yellow-light: #bfbf7f;
 }

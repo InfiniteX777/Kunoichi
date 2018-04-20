@@ -16,14 +16,20 @@ screen {
 }
 
 div {
-	position: absolute;
+	position: relative;
 	top: 0;
 	left: 0;
 }
 
+div#search {
+	top: 10px;
+	left: 10px;
+}
+
 div#dim {
-	top: 0;
-	left: 0;
+	position: absolute;
+	top: 0px;
+	left: 0px;
 	width: 100%;
 	height: 100%;
 	background-color: #000;
@@ -33,23 +39,36 @@ div#dim {
 	pointer-events: none;
 }
 
+div#recent {
+	position: absolute;
+	top: 70px;
+	left: 20;
+	max-height: calc(100% - 70px);
+	display: none;
+	z-index: 3;
+	overflow: auto;
+}
+
 div#screen {
+	position: absolute;
 	top: 40px;
 	height: calc(100% - 40px);
 	width: 100%;
 	max-width: 740px;
 	left: 50%;
 	transform: translateX(-50%);
-	overflow-y: hidden;
+	overflow-y: auto;
 }
 
 div#slider {
+	position: absolute;
 	width: calc((100vw - 40px)/7);
 	max-width: 100px;
 	height: 100px;
 }
 
 div#header {
+	position: absolute;
 	height: 40px;
 	width: 100%;
 	max-width: 740px;
@@ -57,6 +76,20 @@ div#header {
 	transform: translateX(-50%);
 	overflow-y: hidden;
 	pointer-events: none;
+}
+
+div#course {
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+
+div#course div {
+	position: absolute;
+	width: 100px;
+	height: 100px;
+	background: none;
+	box-shadow: 0 0 10px #000;
 }
 
 shadow {
@@ -77,22 +110,56 @@ shadow.bottom {
 	top: 100%;
 }
 
+course {
+	position: relative;
+	top: 0;
+	left: 0;
+	color: #fff;
+	padding: 5px;
+	font-size: 18px;
+	font-weight: lighter;
+	display: block;
+	overflow: hidden;
+	transition: all 0.2s;
+}
+
+course:hover {
+	text-shadow: 0px 0px 5px #000;
+	transform: translateX(5px);
+}
+
+preview {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	text-align: center;
+	font-size: calc(9/350 * (100vw - 40px));
+	box-shadow:
+		0 0 4px 1px #000,
+		0 0 4px 1px #000 inset;
+	margin: 5px;
+	box-sizing: border-box;
+	overflow: auto;
+	z-index: 2;
+}
+
 block {
 	position: absolute;
 	width: 100%;
 	text-align: center;
 	vertical-align: middle;
 	font-size: calc(2/70 * (100vw - 40px));
-	transition: height 0.2s;
-	background: solid;
-	background-color: #7fbf7f;
+	background-color: var(--yellow-light);
 	border-radius: 3px;
 	box-shadow: 0 0 2px #000;
-	margin-left: 5px;
-	margin-top: 5px;
+	margin: 5px;
 	overflow: hidden;
 	display: inline-block;
 	transition: box-shadow 0.2s, top 0.1s;
+}
+
+block[full] {
+	background-color: var(--red-light);
 }
 
 block[active=1] {
@@ -108,7 +175,7 @@ block:before {
 	display: inline-block;
 	height: 100%;
 	vertical-align: middle;
-	mrgin-right: -0.25em;
+	margin-right: -0.25em;
 }
 
 block:hover {
@@ -126,6 +193,25 @@ label {
 	color: #000;
 	display: inline-block;
 	user-select: none;
+	display: block;
+	transition: text-indent 0.2s;
+}
+
+label.red {
+	background: var(--red-light);
+}
+
+label.green {
+	text-indent: 10px;
+	background: var(--green-light);
+}
+
+label.yellow {
+	background: var(--yellow-light);
+}
+
+label[hover] {
+	text-indent: 10px;
 }
 
 label.body {
@@ -174,30 +260,26 @@ input[type=text]:focus {
 	box-shadow: 0 0 5px #000;
 }
 
-img {
-	pointer-events: none;
+input[type=text]:focus + #dim {
+	opacity: 0.4;
 }
 
-img.edit {
-	position: absolute;
-	left: calc(100% - 25px);
-	top: calc(100% - 25px);
-	display: inline-block;
+img {
+	pointer-events: none;
 	user-select: none;
 }
 
-div.scroll {
+img#search {
 	position: absolute;
-	width: 40px;
-	height: 40px;
-	left: calc(100% - 20px);
-	top: 10px;
-	border-radius: 50%;
-	box-shadow: 0 0 5px #000;
-	z-index: 4px;
+	transform: translateX(-100%);
+	z-index: 3;
 }
 
 @media screen and (min-width: 740px) {
+	preview {
+		font-size: 18px;
+	}
+
 	block {
 		font-size: 20px;
 		line-height: normal;
