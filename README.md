@@ -1,8 +1,6 @@
 # Kunoichi
 A simple simulator to help you create the ultimate DLSU schedule!
-## To-Do
-* Preview possible slots when dragging.
-* Automatically save schedules.
-* More 'to-do' ideas.
+## Features
+Working on it...
 ## Disclaimer
 This has nothing to do with 'SchedNinja' or any similar applications.
