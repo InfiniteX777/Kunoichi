@@ -1,57 +1,860 @@
 body {
 	font-family: calibri;
+	-webkit-user-select: none;
+	-khtml-user-select: none;
+	-moz-user-select: none;
+	-o-user-select: none;
+	user-select: none;
+	cursor: default;
+	overflow: hidden;
 }
 
-iframe {
-	color: #ff0000;
-	border: #ff0000 3px solid;
-	height: 300;
+::-webkit-scrollbar {
+	display: none;
 }
 
-[blank] {
-	visibility: hidden;
-}
-
-tr {
-	font-size: 16;
-}
-
-th {
-	height: 28px;
-	color: var(--purple);
-}
-
-td {
-	vertical-align: top;
-}
-
-time {
-	position: relative;
-	background-color: #ff0000;
-	top: 0;
-	height: 50%;
-	width: 100%;
-	text-align: right;
-	vertical-align:text-bottom;
-	display: block;
-}
-
-item {
-	position: relative;
-	background-color: #ff0000;
-	width: 100%;
-	text-align: right;
-	vertical-align:text-bottom;
-	display: block;
-}
-
-table {
+screen {
 	position: absolute;
+	top: 5vw;
+	left: 0;
+	display: block;
 	width: 100%;
-	height: 100%;
-	background-color: #ff0000 solid;
+	height: calc(100% - 5vw);
+	overflow-y: hidden;
+}
+
+
+/* div */
+
+div {
+	position: absolute;
 	top: 0;
 	left: 0;
-	table-layout: fixed;
+}
+
+div#summary {
+	position: absolute;
+	left: 100%;
+	width: 240px;
+	height: 100%;
+	background-color: #fff;
+	transition: all 0.2s;
+	overflow-y: scroll;
+}
+
+div#summary label {
+	display: block;
+	margin-top: 20px;
+	margin-bottom: 20px;
+	font-size: 18px;
+	font-weight: lighter;
+	text-align: center;
+}
+
+div#summary table {
+	width: 100%;
 	border-collapse: collapse;
+	font-size: 15px;
+}
+
+div#summary td {
+	padding-top: 7px;
+	padding-bottom: 7px;
+	text-align: center;
+}
+
+div#summary tr {
+	box-shadow: -10px 0 #005f00;
+	transition: all 0.2s;
+}
+
+div#summary tr:hover {
+	transform: translateX(10px);
+}
+
+div#summary tr:nth-child(odd) {
+	background-color: #dfdfdf;
+}
+
+div#warn {
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	transition: all 0.2s;
+}
+
+div#warn div {
+	display: inline-block;
+	top: 50%;
+	left: 50%;
+	max-width: 360px;
+	padding: 10px;
+	background-color: #fff;
+	box-shadow: 0 0 1px #000;
+	transform: translate(-50%, -50%);
+	transition: height 0.2s;
+}
+
+div#warn div label {
+	display: block;
+	top: 15px;
+	left: 0;
+	padding: 10px;
+	text-align: center;
+	font-size: 16px;
+}
+
+div#warn div table {
+	width: 100%;
+	margin-top: 10px;
+	border: none;
+	border-collapse: collapse;
+	table-layout: fixed;
+}
+
+div#warn div table label {
+	position: relative;
+	top: 0;
+	left: calc(50% - 5px);
+	box-shadow: 0 0 1px #000;
+	padding: 5px;
+	margin: 5px;
+	max-width: 100px;
+	font-weight: bolder;
+	transform: translateX(-50%);
+	transition: all 0.2s;
+}
+
+div#warn div table label:hover {
+	box-shadow: 0 0 0 1px #000, 0 0 10px #000;
+}
+
+div#warn div table label:active {
+	background-color: #dfdfdf;
+	transition: none;
+}
+
+div#prompt {
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	transition: all 0.2s;
+	pointer-events: none;
+}
+
+div#prompt div {
+	top: 50%;
+	left: 50%;
+	width: 240px;
+	height: 140px;
+	background-color: #fff;
+	box-shadow: 0 0 1px #000;
+	transform: translate(-50%, -50%);
+	transition: height 0.2s;
+}
+
+div#prompt div label {
+	position: absolute;
+	display: block;
+	top: 15px;
+	width: 100%;
+	text-align: center;
+	font-weight: lighter;
+	font-style: italic;
+	font-size: 18px;
+	pointer-events: none;
+}
+
+div#prompt div label[warn] {
+	top: 90px;
+	opacity: 0;
+	color: #ff0000;
+	font-weight: normal;
+	font-style: normal;
+	font-size: 14px;
+}
+
+div#prompt div input {
+	position: absolute;
+	top: 50px;
+	left: 50%;
+	width: 180px;
+	height: 30px;
+	background-color: #efefef;
+	border: none;
+	font-size: 14px;
+	text-align: center;
+	outline: none;
+	transform: translateX(-50%);
+	transition: all 0.2s;
+}
+
+div#prompt div input:focus {
+	background: none;
+}
+
+div#prompt div border {
+	position: absolute;
+	top: 80px;
+	left: 50%;
+	background-color: #000;
+	width: 0;
+	height: 1px;
+	transform: translateX(-50%);
+	transition: all 0.2s;
+	pointer-events: none;
+}
+
+div#prompt div input:focus + border {
+	width: 180px;
+}
+
+div#prompt div img {
+	top: calc(100% - 50px);
+	border-radius: 20px;
+	transition: all 0.2s;
+}
+
+div#prompt div img:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000;
+}
+
+div#prompt div img#confirm {
+	position: absolute;
+	left: 50px;
+}
+
+div#prompt div img#cancel {
+	position: absolute;
+	left: 150px;
+}
+
+div#help {
+	width: 100%;
+	height: 100%;
+	opacity: 0.8;
+	background-color: #000;
+	transition: all 0.2s;
+}
+
+div#help div {
+	top: 20px;
+	left: 20px;
+	width: 40px;
+	height: 40px;
+	background-color: #fff;
+	border-radius: 20px;
+}
+
+div#help label {
+	position: absolute;
+	left: 80px;
+	top: 20px;
+	color: #fff;
+	line-height: 40px;
+	font-weight: lighter;
+	font-size: 18px;
+}
+
+div#tooltip {
+	display: none;
+	position: absolute;
+	padding: 5px;
+	padding-left: 10px;
+	padding-right: 10px;
+	background-color: #000;
+	border-radius: 4px;
+	max-width: 300px;
+	opacity: 0.8;
+	z-index: 4;
+	pointer-events: none;
+}
+
+div#tooltip label {
+	color: #fff;
+	opacity: 1;
+	font-size: 15px;
+	pointer-events: none;
+}
+
+div#dump {
+	top: 80px;
+	left: 20px;
+	color: #fff;
+	z-index: 3;
+}
+
+div#search {
+	top: 20px;
+	left: 20px;
+}
+
+div#search input {
+	position: relative;
+	padding: 20px;
+	width: 40px;
+	height: 40px;
+	background: none;
+	border: none;
+	border-radius: 20px;
+	font-size: 14px;
+	opacity: 0;
+	box-shadow: 0 0 5px #000;
+	outline: none;
+	cursor: default;
+	transition: all 0.2s;
+}
+
+div#search input:hover {
+	background-color: #fff;
+	opacity: 1;
+}
+
+div#search input:focus {
+	width: 200px;
+	background-color: #fff;
+	opacity: 1;
+	box-shadow: 0 0 5px #000;
+}
+
+div#search img {
+	position: absolute;
+	transform: translateX(-100%);
+	border-radius: 20px;
+	transition: all 0.2s;
+	pointer-events: none;
+}
+
+div#search img:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px;
+}
+
+div#screen, div#preview {
+	position: absolute;
+	top: 35px;
+	width: 100%;
+	max-width: 600px;
+	height: 100px;
+	left: 50%;
+	transform: translateX(-50%);
+	transition: top 0.1s;
+	pointer-events: none;
+}
+
+div#preview {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 100%;
+	transform: translate(-50%, -50%);
+	z-index: 3;
+}
+
+div#preview div {
+	top: 50%;
+	width: calc(100vw/6);
+	max-width: 100px;
+	opacity: 0;
+	transform: translate(-100%, -50%);
+	transition: opacity 0.2s, height 0.2s;
+}
+
+div#preview div preview {
+	position: absolute;
+	display: inline-block;
+	top: -5px;
+	width: calc(100% - 10px);
+	height: 100%;
+	margin: 5px;
+	background-color: #ff0f0f;
+	box-shadow: 0 0 1px #000;
+	pointer-events: none;
+	transition: all 0.2s;
+}
+
+div#preview div preview[available] {
+	background-color: #0fff0f;
+}
+
+div#deck {
+	width: calc(100vw/6);
+	max-width: 100px;
+	height: 100%;
+	transform: translateX(-100%);
+	pointer-events: none;
+}
+
+div#header {
+	height: 40px;
+	width: 100%;
+	max-width: 600px;
+	left: 50%;
+	transform: translateX(-50%);
+	overflow-y: hidden;
+	pointer-events: none;
+	z-index: 0;
+}
+
+div#header label {
+	position: relative;
+	width: calc(100%/6);
+	line-height: 40px;
+	text-align: center;
+	font-size: calc(3/100 * 100vw);
+	display: inline-block;
+}
+
+div#course {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s;
+}
+
+div#course div#table {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	overflow-y: auto;
+	transition: opacity 0.2s;
+}
+
+div#course img {
+	position: absolute;
+	border-radius: 20px;
+	transition: all 0.2s;
+}
+
+div#course img:hover {
+	background-color: #fff;
+	box-shadow: 0 0 10px #000;
+}
+
+div#course img#load {
+	top: 20px;
+	left: 230px;
+}
+
+div#course img#config {
+	top: 20px;
+	left: 280px;
+}
+
+div#time {
+	position: absolute;
+	left: calc(50% - 50vw);
+	width: 100vw;
+	background-color: #000;
+	opacity: 0;
+	transition: opacity 0.2s;
+	pointer-events: none;
+}
+
+div#info {
+	position: absolute;
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	transition: all 0.2s;
+	z-index: 3;
+	pointer-events: none;
+}
+
+div#info div {
+	position: absolute;
+	top: 50vh;
+	left: 50vw;
+	width: 100vw;
+	max-width: 300px;
+	max-height: 100vh;
+	background-color: #fff;
+	box-shadow: 0 0 1px #000;
+	overflow-y: auto;
+	transform: translate(-50%, -50%);
+}
+
+div#info img#enroll {
+	position: absolute;
+	display: inline-block;
+	top: 10px;
+	left: 10px;
+	width: 30px;
+	height: 30px;
+	opacity: 0.4;
+	color: #fff;
+	background-color: #3f7f3f;
+	line-height: 30px;
+	text-align: center;
+	border-radius: 15px;
+	transition: all 0.2s;
+}
+
+div#info img#enroll[drop] {
+	background-color: #7f3f3f;
+}
+
+div#info img#enroll[enabled] {
+	opacity: 1;
+}
+
+div#info img#enroll[enabled]:hover {
+	box-shadow: 0 0 5px #000;
+}
+
+div#info img#close {
+	position: absolute;
+	top: 10px;
+	left: calc(100% - 10px);
+	border-radius: 15px;
+	transform: translateX(-100%);
+	transition: box-shadow 0.2s;
+}
+
+div#info img#close:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000;
+}
+
+div#info header {
+	position: relative;
+	display: block;
+	margin-top: 10px;
+	line-height: 30px;
+	text-align: center;
+	font-size: 22px;
+	font-weight: lighter;
+}
+
+div#info subtitle {
+	position: relative;
+	display: block;
+	margin: 10px;
+	margin-left: 5px;
+	margin-top: 5px;
+	text-align: center;
+	font-style: italic;
+	font-size: 16px;
+}
+
+div#info table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+div#info tr:nth-child(odd) {
+	background-color: #efefef;
+}
+
+div#info td:first-child {
+	padding-left: 10px;
+	font-weight: bold;
+	user-select: none;
+	cursor: default;
+}
+
+div#info td {
+	padding: 5px;
+	user-select: auto;
+	cursor: auto;
+}
+
+div#info label {
+	position: relative;
+	left: 10px;
+	font-size: 16px;
+	font-weight: normal;
+}
+
+div#message {
+	position: absolute;
+	left: calc(100% + 10px);
+	top: 100%;
+	width: 210px;
+	transform: translate(-100%, -100%);
+	-webkit-animation: slide 0.2s;
+	animation: slide 0.2s;
+}
+
+@keyframes slide {
+	100% {
+		box-shadow: none;
+	}
+}
+
+div#message label {
+	position: relative;
+	display: block;
+	opacity: 0.8;
+	left: 100%;
+	padding: 10px;
+	padding-left: 10px;
+	padding-right: 20px;
+	margin-bottom: 10px;
+	background-color: #000;
+	box-shadow: -7px 0 #005f00;
+	color: #fff;
+	font-size: 16px;
+	transition: all 0.2s;
+}
+
+div#message label:hover {
+	transform: translateX(-10px);
+}
+
+/* table */
+
+table.course {
+	position: absolute;
+	top: 80px;
+	left: 20px;
+	width: 200px;
+	border-collapse: collapse;
+}
+
+table.course tr {
+	color: #fff;
+	transition: all 0.2s;
+}
+
+table.course tr[full] {
+	opacity: 0.4;
+}
+
+table.course tr:hover {
+	color: #0fef0f;
+	opacity: 1;
+	text-shadow: 0 0 10px #000;
+	transform: translateX(10px);
+}
+
+table.course td {
+	text-align: center;
+	font-size: 16px;
+}
+
+
+/* course */
+
+course {
+	display: block;
+	margin-bottom: 10px;
+	color: #fff;
+	font-size: 18px;
+	font-weight: bolder;
+	transition: all 0.2s;
+}
+
+course:hover {
+	box-shadow: 0px -1px #fff inset;
+}
+
+
+/* card */
+
+card {
+	position: absolute;
+	display: inline-block;
+	width: calc(100% - 10px);
+	margin: 5px;
+	text-align: center;
+	vertical-align: middle;
+	font-size: calc(18/600 * 100vw);
+	background-color: #dfdfff;
+	box-shadow: 0 0 1px #000;
+	overflow: hidden;
+	transition: box-shadow 0.2s;
+	pointer-events: auto;
+}
+
+card[hover] {
+	box-shadow: 0 0 0 1px #000, 0 0 10px #000;
+	z-index: 1;
+}
+
+card label {
+	pointer-events: none;
+}
+
+card label.body {
+	font-size: calc(15/600 * 100vw);
+	margin-top: 5px;
+	font-weight: lighter;
+	display: inline-block;
+}
+
+
+/* word */
+
+word {
+	color: #fff;
+	font-weight: lighter;
+}
+
+
+/* label */
+
+label {
+	display: block;
+	color: #000;
+	transition: text-indent 0.2s;
+}
+
+label#spooky {
+	position: absolute;
+	opacity: 0;
+	top: 50%;
+	left: 10px;
+	width: calc(100% - 20px);
+	text-align: center;
+	font-weight: lighter;
+	font-size: 32px;
+	transform: translateY(-50%);
+	transition: opacity 0.2s;
+}
+
+label#AYTerm {
+	position: absolute;
+	top: calc(100% - 10px);
+	left: 50%;
+	opacity: 0.3;
+	font-size: 18px;
+	text-align: center;
+	transform: translate(-50%, -100%);
+	transition: all 0.2s;
+}
+
+label[header] {
+	font-weight: lighter;
+	font-size: 18px;
+}
+
+label.time {
+	position: absolute;
+	opacity: 0;
+	left: calc(50% - 50vw + 10px);
+	color: #000;
+	font-size: calc(18/600 * 100vw);
+	font-weight: lighter;
+	transition: opacity 0.2s;
+	pointer-events: none;
+}
+
+label.time[bottom] {
+	transform: translateY(-100%);
+}
+
+label.dump {
+	position: relative;
+	left: 0;
+	color: #fff;
+	line-height: 21px;
+	transition: all 0.2s;
+}
+
+label.dump:hover {
+	left: 10px;
+	text-shadow: 0 0 5px #000;
+}
+
+
+/* etc */
+
+dim {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: #000;
+	opacity: 0.6;
+}
+
+shadow {
+	position: absolute;
+	top: -10px;
+	left: 0;
+	box-shadow: 0 0 20px #000;
+	width: 100%;
+	height: 10px;
+	display: block;
+	opacity: 0;
+	transition: opacity 0.2s;
+	pointer-events: none;
+	z-index: 2;
+}
+
+shadow.bottom {
+	top: 100%;
+}
+
+
+img#save {
+	position: absolute;
+	top: 80px;
+	left: 20px;
+	opacity: 0;
+	border-radius: 20px;
+	background-color: #fff;
+	box-shadow: 0 0 20px #ff0000;
+	transition: all 0.2s;
+	pointer-events: none;
+}
+
+img#save:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000;
+}
+
+img#cap {
+	position: absolute;
+	top: 100%;
+	left: 100%;
+	width: calc(16/600 * 100vw);
+	max-width: 16px;
+	transform: translate(-100%, -100%);
+}
+
+
+/* Modifiers */
+
+*[bold] {
+	font-weight: bolder !important;
+}
+
+*[center] {
+	text-align: center !important;
+}
+
+*[right] {
+	text-align: center !important;
+}
+
+
+/* Conditional */
+
+@media screen and (min-width: 600px) {
+	card {
+		font-size: 18px;
+	}
+
+	card label.body {
+		font-size: 15px;
+	}
+
+	div#header label {
+		font-size: 18px;
+		width: 100px;
+	}
+
+	label.time {
+		font-size: 18px;
+	}
 }

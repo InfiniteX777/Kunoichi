@@ -1,81 +1,82 @@
 //Service Temporarily Unavailable h1
+const fs = require("fs");
+const path = require("path");
+const url = require("url");
 const {ipcMain,
 	   app,
 	   BrowserWindow} = require("electron");
-const fs = require("fs");
 const grapes = require("./assets/js/grapes.js");
 const mower = require("./assets/js/mower.js");
-const path = require("path");
-const url = require("url");
 const data = {};
 
-try {
+if (!fs.existsSync("cache"))
 	fs.mkdirSync("cache");
-} catch(err) {}
 
-ipcMain.on("request", (event, course) => {
+ipcMain.on("request", (event, course, ayterm) => {
+	ayterm = ayterm || mower.AYTerm;
 	course = course.toUpperCase();
 
-	if (!data[course]) {
+	if (!ayterm)
+		/* We don't know what the academic year and term is. There's
+		   no point in searching for the data.
+		*/
+		return;
+
+	// Make an entry for the AYTerm if first time.
+	if (!data[ayterm])
+		data[ayterm] = {};
+
+	// See if data was previously searched.
+	if (data[ayterm][course]) {
+		// Send cached data.
+		event.sender.send(
+			"request",
+			course,
+			data[ayterm][course]
+		);
+	} else {
 		// Request data.
-		mower.once(course, (arg) => {
-			// If the window was closed.
+		mower.once(course, arg => {
+			// If the window that requested for this was closed.
 			if (event.sender.isDestroyed())
-				return;
+				return; // That window wasted your time.
 
-			if (arg === -2 ||
-				arg === -1 ||
-				arg.length == 0) {
-				// Find a cached data in storage.
-				try {
-					data[course] = 
-						JSON.parse(fs.readFileSync(
-							"cache/" + course + ".json"
-						));
-				} catch(err) {}
+			let v = "cache/" + mower.AYTerm + "/" + course + ".json";
 
-				if (data[course]) {
-					// Send cache data.
+			/* See if the reply is a number. This means that there was
+			   no data found. The data should be an object.
+			*/
+			if (typeof(arg) === "number") {
+				// No data. Find a cached data in storage.
+				if (fs.existsSync(v)) {
+					// Data found.
+					data[ayterm][course] = JSON.parse(
+						fs.readFileSync(v)
+					);
+
 					event.sender.send(
 						"request",
 						course,
 						data[course]
 					);
-				} else {
+				} else
 					// No data found.
-					event.sender.send(
-						"request",
-						course,
-						-1
-					);
-				}
+					event.sender.send("request", course, arg);
 			} else {
-				// Send new data.
-				data[course] = arg;
+				// Data received. Send new data.
+				data[ayterm][course] = arg;
 
-				fs.writeFile(
-					"cache/" + course + ".json",
-					JSON.stringify(arg),
-					(err) => {}
-				);
+				if (!fs.existsSync("cache"))
+					// Create the 'cache' folder.
+					fs.mkdirSync("cache");
 
-				event.sender.send(
-					"request",
-					course,
-					arg
-				);
+				fs.writeFileSync(v, JSON.stringify(arg));
+				event.sender.send("request", course, arg);
 			}
 		});
 
 		// Send request.
 		mower.request(course);
-	} else {
-		// Send cached data.
-		event.sender.send(
-			"request",
-			course,
-			data[course]
-		);
 	}
 })
 
@@ -85,20 +86,9 @@ function init() {
 		height: 600,
 		title: "Kunoichi"
 	}, (v) => {
-		//v.setMenu(null);
-		v.loadURL(
-			path.join(
-				__dirname,
-				"assets/html/sched_scale.html"
-			)
-		);
+		v.setMenu(null);
+		v.loadURL(path.join(__dirname, "index.html"));
 	});
-
-	mower.once("_TERMCOLL", (arg) => {
-		console.log(arg);
-	})
-
-	mower.requestTerm();
 }
 
 app.on("ready", init);

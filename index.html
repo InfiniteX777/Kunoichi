@@ -1,37 +1,25 @@
-<html>
-
-<script src="./assets/js/init.js"></script>
+<html lang="en" data-ng-app="app">
 
 <head>
 	<link rel="stylesheet" href="assets/css/variables.css">
 	<link rel="stylesheet" href="assets/css/index.css">
+	<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+	<meta content="utf-8" http-equiv="encoding">
 </head>
 
 <body>
-	<table>
-		<tbody>
-			<tr>
-				<th>M</th>
-				<th>T</th>
-				<th>W</th>
-				<th>H</th>
-				<th>F</th>
-				<th>S</th>
-			</tr>
-			<tr>
-				<td><item style="height:10vh;"></item></td>
-				<td><item style="height:10vh; top:8vh;"></item></td>
-				<td></td>
-				<td></td>
-				<td></td>
-				<td></td>
-			</tr>
-		</tbody>
-	</table>
+	<div id=tooltip></div><label id=spooky></label><label id=AYTerm>????-??, Term ?</label><div id=help><div></div><label>Search courses here.</label></div>
+	<div id=header><label>Monday</label><label>Tuesday</label><label>Wednesday</label><label>Thursday</label><label>Friday</label><label>Saturday</label></div>
+	<div id=screen><div id=time></div><label class=time></label><label class=time bottom></label><div id=deck></div></div>
+	<img id=save draggable=false src="assets/img/save.png">
+	<div id=course><dim></dim><div id=preview><div></div></div><div id=dump></div><div id=table></div><img id=load draggable=false src="assets/img/load.png"><img id=config draggable=false src="assets/img/config.png"><div id=summary><label>What you got so far...</label><table><tbody></tbody></table></div></div></div>
+	<div id=search><input type=text placeholder=Search><img draggable=false id=search src="assets/img/search.png"></div>
+	<div id=prompt><dim></dim><div><label>Save schedule as...</label><label warn>This file name already exists!</label><input type=text placeholder="Schedule 1"><border></border><img id=confirm src="assets/img/confirm.png"><img id=cancel src="assets/img/cancel.png"></div></div>
+	<div id=info><dim></dim><div><header>INTRODB</header><subtitle>Introduction to Database</subtitle><img id=close draggable=false src="assets/img/close_small.png"><img id=enroll draggable=false></div></div>
+	<div id=message></div>
+	<shadow></shadow><shadow class=bottom></shadow>
 </body>
 
-<script src="./assets/js/overlord.js"></script>
-<script src="./assets/js/mothership.js"></script>
-<script src="./assets/js/menu.js"></script>
+<script src="assets/js/index.js"></script>
 
 </html>

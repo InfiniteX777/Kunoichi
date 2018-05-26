@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "main": "main.js",
   "dependencies": {
+    "html2canvas": "^1.0.0-alpha.12",
     "pdfjs-dist": "^2.0.489"
   }
 }
