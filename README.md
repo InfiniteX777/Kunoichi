@@ -1,7 +1,7 @@
 # Kunoichi
 A simple simulator to help you create the ultimate DLSU schedule!
 ## Features
-### Non-case-sensitive Searching
+### Non-Case-Sensitive Searching
 You won't need to put everything in capital letters anymore.
 <details>
   <summary>Preview</summary>
