@@ -17,6 +17,14 @@ Hovering over the slots will show you how it would affect your schedule.
   ![](https://raw.githubusercontent.com/Llyme/Kunoichi/master/preview/enroll.gif)
 </details>
 
+### Search Filtering
+Narrow down the search results by adding more details to your searches.
+<details>
+  <summary>Preview</summary>
+
+  No previews yet. Sorry!
+</details>
+
 ### Autosave
 You'll only need to save it once and it'll automatically save itself everytime you change something in your schedule.
 
