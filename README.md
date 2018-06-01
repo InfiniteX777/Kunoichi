@@ -1,17 +1,24 @@
 # Kunoichi
 A simple simulator to help you create the ultimate DLSU schedule!
 ## Features
+### Non-case-sensitive Searching
+You won't need to put everything in capital letters anymore.
 <details>
-  <summary>Search without caps!</summary>
+  <summary>Preview</summary>
 
   ![](https://raw.githubusercontent.com/Llyme/Kunoichi/master/preview/search.gif)
 </details>
 
+### Live Previews
+Hovering over the slots will show you how it would affect your schedule.
 <details>
-  <summary>Live previews!</summary>
+  <summary>Preview</summary>
 
   ![](https://raw.githubusercontent.com/Llyme/Kunoichi/master/preview/enroll.gif)
 </details>
+
+### Autosave
+You'll only need to save it once and it'll automatically save itself everytime you change something in your schedule.
 
 ## Disclaimer
 This has nothing to do with 'SchedNinja' or any similar applications.
