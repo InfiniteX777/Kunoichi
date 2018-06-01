@@ -1,6 +1,14 @@
 # Kunoichi
 A simple simulator to help you create the ultimate DLSU schedule!
 ## Features
+### Visualized Schedule
+The main point of this application. Shows you what your schedule looks like graphically.
+<details>
+  <summary>Preview</summary>
+
+  No previews yet. Sorry!
+</details>
+
 ### Non-Case-Sensitive Searching
 You won't need to put everything in capital letters anymore.
 <details>
@@ -16,6 +24,9 @@ Hovering over the slots will show you how it would affect your schedule.
 
   ![](https://raw.githubusercontent.com/Llyme/Kunoichi/master/preview/enroll.gif)
 </details>
+
+### Data Caching
+Saves all the courses you've searched for offline use.
 
 ### Search Filtering
 Narrow down the search results by adding more details to your searches.
