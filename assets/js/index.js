@@ -9,7 +9,7 @@ const elem = document.createElement.bind(document),
 	body = document.body,
 	getId = document.getElementById.bind(document),
 	getTag = document.getElementsByTagName.bind(document);
-// Offset 
+// Offset
 const day_pos = {
 	"M": 1,
 	"T": 2,
@@ -39,6 +39,7 @@ div.help = getId("help");
 
 // Contains the cards and time indication.
 div.screen = getId("screen");
+
 div.screen_label = div.screen.getElementsByTagName("label");
 
 // Will contain the course cards and preview cards.
@@ -65,6 +66,13 @@ div.info_div = div.info.getElementsByTagName("div")[0];
 div.info_header = div.info.getElementsByTagName("header")[0];
 div.info_subtitle = div.info.getElementsByTagName("subtitle")[0];
 div.info_img = div.info.getElementsByTagName("img");
+
+// The file-open window.
+div.open = getId("open");
+div.open_dim = div.open.getElementsByTagName("dim")[0];
+div.open_div = div.open.getElementsByTagName("div")[0];
+div.open_img = div.open.getElementsByTagName("img");
+div.open_listbox = getId("listbox");
 
 // Preview container.
 div.preview = getId("preview").getElementsByTagName("div")[0];
@@ -120,8 +128,12 @@ let saveBuffer = 0;
 */
 let schedule = {
 	list: {},
+	/* Wait for the application to get the AYTerm from DLSU, otherwise
+	   let the user choose a file to load first.
+	*/
 	AYTerm: null,
-	name: null // Start with null to prompt the user for a name.
+	// Start with null to prompt the user for a name.
+	name: null
 };
 /* Used for the info window. Should be an array; [name, id, state].
    If 'state' has a 'non-false' value, it will enroll the target,
@@ -173,21 +185,11 @@ let drag;
 
 //-- Miscellaneous functions. --//
 
-/* Check if is a folder.
+/* Check if it's a folder.
 */
 function isdir(source) {
 	if (fs.existsSync(source))
 		return fs.lstatSync(source).isDirectory();
-}
-
-/* Get all the folders in the directory. Only returns the
-   folder's name.
-*/
-function getdirs(source) {
-	if (fs.existsSync(source))
-		return fs.readdirSync(source).filter(name => 
-			isdir(source + "\\" + name)
-		);
 }
 
 // spook them
@@ -205,7 +207,8 @@ const spook_list = [
 	":)",
 	"You shall pass!",
 	"It's dangerous to go alone.<br>Take some courses.",
-	"For the emperor!"
+	"For the emperor!",
+	"I believe in you."
 ];
 
 /**
@@ -216,11 +219,9 @@ function setSpook(flag) {
 	if (flag)
 		label.spooky.innerHTML = "";
 	else
-		label.spooky.innerHTML = spook_list[
-			Math.round(
-				Math.random()*(spook_list.length - 1)
-			)
-		];
+		label.spooky.innerHTML = spook_list[Math.round(
+			Math.random()*(spook_list.length - 1)
+		)];
 }
 
 /**
@@ -230,13 +231,18 @@ function setSpook(flag) {
  * message is clicked. Returning 'true' will remove the message.
  * The 'Object' is the element.
  * @param Number lifetime - Seconds before the message disappears.
+ * @param Number type - 0 = green; 1 = yellow; 2 = warn.
  * @return [Object, Function] - Returns an array with the element
  * and a function which will remove the message when fired.
 **/
-function sendMessage(str, callback, lifetime) {
+function sendMessage(str, callback, lifetime, type) {
 	let tick = 0;
 	let elm = elem("label");
 	elm.innerHTML = str;
+
+	// Change its type if provided.
+	if (type)
+		elm.setAttribute("type", type);
 
 	div.message.appendChild(elm);
 
@@ -244,8 +250,8 @@ function sendMessage(str, callback, lifetime) {
 	setTimeout(() => elm.style.left = "0", 5);
 
 	function timer() {
-		elm.style.animation = "slide " + lifetime + "s linear";
 		let i = tick;
+		elm.style.animation = "slide " + lifetime + "s linear";
 
 		setTimeout(() => {
 			if (i == tick)
@@ -258,6 +264,7 @@ function sendMessage(str, callback, lifetime) {
 		// Put the tick to an unreachable value to invalidate timers.
 		tick = -1;
 		elm.style.left = "210px";
+		elm.style.pointerEvents = "none"; // Ignore mouse events.
 
 		// Wait out the animation before destroying the element.
 		setTimeout(() => div.message.removeChild(elm), 200);
@@ -288,20 +295,21 @@ function sendMessage(str, callback, lifetime) {
 	return [elm, close];
 }
 
-function hideWarn() {
-
-}
-
-function showWarn(txt, buttons, callback) {
-	let warn = elem("div");
-	warn.setAttribute("id", "warn");
-	body.appendChild(warn);
+/**
+ * Create a dialog window. This will be on top of everything (including
+ * any previous dialog windows) except for the notification messages
+ * on the bottom-right corner.
+**/
+function showDialog(txt, buttons, callback) {
+	let dialog = elem("div");
+	dialog.setAttribute("id", "dialog");
+	body.appendChild(dialog);
 
 	let dim = elem("dim");
-	warn.appendChild(dim);
+	dialog.appendChild(dim);
 
 	let div = elem("div");
-	warn.appendChild(div);
+	dialog.appendChild(div);
 
 	let label = elem("label");
 	label.innerHTML = txt;
@@ -326,11 +334,11 @@ function showWarn(txt, buttons, callback) {
 
 		label.addEventListener("click", event => {
 			if (!callback || callback(event, i)) {
-				warn.style.opacity = null;
-				warn.style.pointerEvents = "none";
+				dialog.style.opacity = null;
+				dialog.style.pointerEvents = "none";
 
 				setTimeout(
-					() => body.removeChild(warn),
+					() => body.removeChild(dialog),
 					1000
 				);
 			}
@@ -338,7 +346,7 @@ function showWarn(txt, buttons, callback) {
 	}
 
 	setTimeout(() => {
-		warn.style.opacity = 1;
+		dialog.style.opacity = 1;
 	}, 5);
 }
 
@@ -376,7 +384,9 @@ if (schedule.AYTerm) {
 	/* Try to request for current academic year and term.
 	   Otherwise, make use of the offline cache.
 	*/
-	let v = getdirs("cache");
+	let v = fs.existsSync("cache") && fs.readdirSync("cache").filter(
+		name => isdir("cache" + "\\" + name)
+	);
 
 	// Set the AYTerm with the offline cache's latest.
 	if (v) {
@@ -458,15 +468,13 @@ function prompt_save_func(filename) {
 	schedule.name = filename;
 
 	prompt_hide();
-	img.save.parentElement.removeChild(img.save);
 	setTimeout(() => {
 		div.prompt.parentElement.removeChild(div.prompt);
 
 		delete div.prompt;
 	}, 1000);
 
-	delete img.save;
-
+	ipcRenderer.send("title", filename); // Rename the window.
 	saveData();
 	sendMessage("Schedule will now automatically save.", null, 3);
 }
@@ -476,7 +484,7 @@ function prompt_save() {
 		div.prompt_input.placeholder;
 
 	if (fs.existsSync("save\\" + filename + ".json"))
-		showWarn(
+		showDialog(
 			"Another schedule with the same name already exists!",
 			["Overwrite", "Cancel"],
 			(event, choice) => {
@@ -525,26 +533,185 @@ tooltipListener(
 );
 
 
-//-- Enrollment conflict checking. --//
+//-- Schedule functions. --//
 
 /**
  * Load a saved schedule. This will also update the schedule.
 **/
-function loadSchedule(data) {
-	for (let i in schedule.list) {
-		// Make sure this is a legitimate datum.
-		if (schedule.list[i].id) {
-			// If there is a better datum, take that instead.
-			if (data[schedule.AYTerm][name] && data[schedule.AYTerm][name].slots[id])
-				schedule.list[i] = Object.assign({
-					id: schedule.list[i].id
-				}, data[schedule.AYTerm][name].slots[id]);
-		} else {
-			// Get rid of data with no id.
-			delete schedule.list[i];
+function loadSchedule(sched) {
+	// Get rid of the previous schedule.
+	for (let name in schedule.list) {
+		// Remove summary sidebar elements.
+		div.summary_tbody.removeChild(schedule.list[name].tr);
+
+		// Remove cards.
+		for (let i in schedule.list[name].cards)
+			div.deck.removeChild(schedule.list[name].cards[i]);
+	}
+
+	// Create the visual stuffs (cards and sidebar elements).
+	let list = sched.list;
+	let i = 0;
+	scroll_min = scroll_max = null; // Set to null for calibration.
+
+	for (let name in list) {
+		let slot = list[name];
+		slot.cards = newCard(name, slot.id, slot);
+		slot.tr = newSummary(name, slot.id, slot);
+
+		if (scroll_min != null)
+			scroll_min = Math.min(slot.time[0] + slot.time[1], scroll_min);
+		else
+			scroll_min = slot.time[0] + slot.time[1];
+
+		if (scroll_max != null)
+			scroll_max = Math.max(slot.time[0], scroll_max);
+		else
+			scroll_max = slot.time[0];
+
+		if (!i) {
+			setSpook(1); // lolol
+
+			i = 1;
 		}
 	}
+
+	if (!i) setSpook(); // lolol
+
+	// Replace.
+	schedule = sched;
+
+	ipcRenderer.send("title", sched.name); // Rename the window.
+	sendMessage("Loaded '" + sched.name + "'.", null, 2); // Message user.
+	scrollTo(0); // Scroll to top.
 }
+
+/**
+ * See if this file does exist, can be parsed with JSON, and has the
+ * necessary attributes of a schedule.
+ * @param String name - the full path to the schedule (including its name).
+ * If path doesn't start from the drive, it will start from the .exe's
+ * location.
+ * @return Object - Returns the schedule if it is,
+ * otherwise 'null'.
+**/
+function getSched(filepath) {
+	try {
+		let ayterm;
+		let sched = {};
+		let file = JSON.parse(fs.readFileSync(filepath));
+
+		for (let i in file)
+			if (i === "AYTerm") {
+				if (file[i] == null)
+					// You can't enroll without AYTerm.
+					throw null;
+
+				ayterm = file[i]; // Transfer to variable.
+
+				delete file[i]; // Delete it.
+			} else if (!file[i].day || !file[i].time)
+				// Get rid of faulty data.
+				delete file[i];
+			else
+				// Formalize data.
+				file[i].literal = file[i].section + " " +
+					file[i].day.join("") + " " +
+					parseTime(file[i].time[0]) + " - " +
+					parseTime(file[i].time[0] + file[i].time[1]) + " " +
+					file[i].room;
+
+		// All good. Return the schedule.
+		return {
+			name: filepath.match(/\\.+$/)[0].slice(1, -5), // Get the name.
+			AYTerm: ayterm,
+			list: file // Point it to the file.
+		};
+	} catch (err) { }
+}
+
+/**
+ * Show yer treasures, me hearty!
+**/
+function showSchedBrowser() {
+	// Clear the previous stuff.
+	div.open_listbox.innerHTML = "";
+
+	// Draw the schedules first before showing it.
+	let l = fs.existsSync("save") && fs.readdirSync("save").filter(name =>
+		// Not a folder.
+		!isdir("save\\" + name) &&
+		// Must have a '.json'.
+		name.toLowerCase().match(/\.[^\.]+$/) == ".json"
+	).sort((a, b) =>
+		// Sort by last modified.
+		fs.lstatSync("save\\" + b).mtimeMs -
+		fs.lstatSync("save\\" + a).mtimeMs
+	);
+
+	if (l) for (let i in l) {
+		let file = "save\\" + l[i];
+		let name = l[i].slice(0, -5);
+		let sched = getSched(file);
+
+		if (sched) {
+			let stat = fs.lstatSync(file);
+			let d = stat.mtime.toLocaleDateString(); // Modified.
+			let label = elem("label");
+			label.innerHTML = name + "<br><label>" + sched.AYTerm +
+				"</label><label right>" + d + "</label>";
+
+			label.addEventListener("mousedown", event => {
+				if (event.button == 0) {
+					div.open.style.pointerEvents = "";
+					div.open.style.opacity = "";
+
+					loadSchedule(sched);
+				} else if (event.button == 2) {
+					div.open.style.pointerEvents = "";
+					div.open.style.opacity = "";
+
+					ipcRenderer.send("window", file);
+				}
+			});
+
+			div.open_listbox.appendChild(label);
+		} else sendMessage(
+			"Can't load '" + name + "'.<br>It's probably corrupted :(",
+			null,
+			3,
+			2
+		);
+	}
+
+	div.open.style.pointerEvents = "auto";
+	div.open.style.opacity = 1;
+}
+
+img.load.addEventListener("mousedown", event => {
+	if (event.button == 0)
+		showSchedBrowser();
+});
+
+// New window button.
+div.open_img[0].addEventListener("click", event => {
+	ipcRenderer.send("window");
+});
+
+tooltipListener(div.open_img[0], "<label>New Window</label>", null, 1);
+
+// Close button.
+div.open_img[1].addEventListener("click", event => {
+	div.open.style.pointerEvents = "";
+	div.open.style.opacity = "";
+});
+
+tooltipListener(div.open_img[1], "<label>Close</label>", null, 1);
+
+div.open_dim.addEventListener("mousedown", event => {
+	div.open.style.pointerEvents = "";
+	div.open.style.opacity = "";
+});
 
 /**
  * Check if the two slots have at least 1 schedule with the same
@@ -637,11 +804,8 @@ function setPreview(name, slot) {
 function scrollAdd(delta) {
 	if (scroll_min != null) {
 		scroll = Math.max(
-			scroll_min - innerHeight + 40,
-			Math.min(
-				scroll + delta,
-				scroll_max + scroll_offset - 35
-			)
+			scroll_min/0.6 - innerHeight + 40,
+			Math.min(scroll + delta, scroll_max/0.6 + scroll_offset - 35)
 		);
 		div.screen.style.top = scroll_offset - scroll;
 	}
@@ -657,11 +821,8 @@ function scrollAdd(delta) {
 function scrollTo(y, force) {
 	if (scroll_min != null) {
 		scroll = force ? y : Math.max(
-			scroll_min - innerHeight + 40,
-			Math.min(
-				y,
-				scroll_max + scroll_offset - 35
-			)
+			scroll_min/0.6 - innerHeight + 40,
+			Math.min(y, scroll_max/0.6 + scroll_offset - 35)
 		);
 		div.screen.style.top = scroll_offset - scroll;
 	}
@@ -743,42 +904,24 @@ function tooltipListener(elm, value, cond, flag) {
  * if there's a conflict.
  * @param String name - the name of the course. Must be all caps.
  * @param Int id - the id of the slot.
- * @param Int scroll - If a 'non-false' value, will scroll towards
+ * @param Object slot - the slot's data.
  * the card if successfully added to schedule.
 **/
-function courseEnroll(name, id, scroll) {
-	let slot = data[schedule.AYTerm][name].slots[id];
-
+function courseEnroll(name, id, slot) {
 	if (!hasConflict(name, slot)) {
 		setSpook(1); // lolol
-
-		// Set up the entry for the summary sidebar.
-		let tr = elem("tr");
-		let l = [id, name, slot.section, slot.room];
-
-		for (let i in l) {
-			let td = elem("td");
-			td.innerHTML = l[i];
-
-			tr.appendChild(td);
-		}
-
-		tr.addEventListener("mousedown", event => {
-			if (event.button == 0)
-				showInfo(name, id, slot);
-		})
-
-		div.summary_tbody.appendChild(tr);
 
 		/* Make an entry for the slot. Note that the slot is
 		   duplicated, meaning it does not point to the actual
 		   object. This is to prevent data tampering.
 		*/
 		schedule.list[name] = Object.assign({
-			id: id,
-			cards: newCard(name, id, slot), // Visual representation.
-			summary: tr
+			id: id
 		}, slot);
+		// Create the cards.
+		schedule.list[name].cards = newCard(name, id, slot);
+		// Create the summary sidebar entry.
+		schedule.list[name].tr = newSummary(name, id, slot);
 
 		// Scroll to the card's location.
 		scrollTo(
@@ -787,14 +930,16 @@ function courseEnroll(name, id, scroll) {
 			innerHeight/2 // Screen size.
 		);
 
-		// Check if this schedule still has a save button.
-		if (img.save) {
+		// Check if this schedule was already named.
+		if (schedule.name)
+			saveData(); // Autosave.
+		else {
 			// Reveal the save button.
 			img.save.style.opacity = 1;
 			img.save.style.pointerEvents = "auto";
-		} else if (schedule.name)
-			// Only save when the schedule is properly set up.
-			saveData();
+		}
+
+		return true; // Sucessfully added to schedule.
 	}
 }
 
@@ -803,21 +948,46 @@ function courseDrop(name) {
 
 	if (slot) {
 		// Get rid of the summary sidebar entry.
-		div.summary_tbody.removeChild(slot.summary);
+		div.summary_tbody.removeChild(slot.tr);
 
 		// Get rid of the cards.
 		for (let i in slot.cards)
 			slot.cards[i].parentElement.removeChild(slot.cards[i]);
 
+		// Resize scroll boundaries.
+		let min = slot.time[0] + slot.time[1] == scroll_min,
+			max = slot.time[0] == scroll_max;
+		scroll_min = min ? null : scroll_min;
+		scroll_max = max ? null : scroll_max;
+
+		if (scroll_min == null || scroll_max == null)
+			for (let i in schedule.list) {
+				let v = schedule.list[i];
+
+				if (min)
+					if (scroll_min != null)
+						scroll_min = Math.min(
+							v.time[0] + v.time[1],
+							scroll_min
+						);
+					else
+						scroll_min = v.time[0] + v.time[1];
+
+				if (max)
+					if (scroll_max != null)
+						scroll_max = Math.max(slot.time[0], scroll_max);
+					else
+						scroll_max = slot.time[0];
+			}
+
 		// Remove entry from schedule.
 		delete schedule.list[name];
 
+		// See if there are no slots left in the schedule.
 		if (!Object.values(schedule.list).length) {
-			if (img.save) {
-				// Hide the save button.
-				img.save.style.opacity = "";
-				img.save.style.pointerEvents = "";
-			}
+			// Hide the save button.
+			img.save.style.opacity = "";
+			img.save.style.pointerEvents = "";
 
 			// Hide the summary since there's nothing to show.
 			div.summary.style.transform = "";
@@ -829,6 +999,8 @@ function courseDrop(name) {
 		// Only save when the schedule is properly set up.
 		if (schedule.name)
 			saveData();
+
+		return true; // Successfully removed from schedule.
 	}
 }
 
@@ -842,7 +1014,7 @@ function courseDrop(name) {
  * @param Object slot - The slot's data.
 **/
 function showInfo(name, id, slot) {
-	enrollTarget = [name, id, !hasConflict(name, slot)];
+	enrollTarget = [name, id, slot, !hasConflict(name, slot)];
 	div.info_header.innerHTML = name;
 	div.info_subtitle.innerHTML = data.course[name] || "";
 
@@ -888,7 +1060,7 @@ function showInfo(name, id, slot) {
 		div.info_img[1].removeAttribute("drop");
 
 		// Check if there are no conflicts.
-		if (enrollTarget[2])
+		if (enrollTarget[3])
 			// Can enroll. Enable it.
 			div.info_img[1].setAttribute("enabled", 1);
 		else
@@ -920,19 +1092,31 @@ div.info_img[1].addEventListener("click", () => {
 	// Make sure there is an actual target.
 	if (enrollTarget)
 		// See if the user is trying to enroll.
-		if (enrollTarget[2])
+		if (enrollTarget[3]) {
 			// User is attempting to enroll.
-			courseEnroll(enrollTarget[0], enrollTarget[1]);
-		else if (schedule.list[enrollTarget[0]] &&
-				schedule.list[enrollTarget[0]].id == enrollTarget[1])
-			// User wants to drop the target. Check if the same id.
-			courseDrop(enrollTarget[0]);
+			if (courseEnroll(
+				enrollTarget[0],
+				enrollTarget[1],
+				enrollTarget[2]
+			)) {
+				div.info_img[1].setAttribute("src", "assets/img/drop.png");
+				div.info_img[1].setAttribute("drop", 1);
 
-	// Re-focus the info window to update its content.
-	showInfo(
-		enrollTarget[0], enrollTarget[1],
-		data[schedule.AYTerm][enrollTarget[0]].slots[enrollTarget[1]]
-	);
+				enrollTarget[3] = !enrollTarget[3]; // Flip.
+			}
+		} else if (schedule.list[enrollTarget[0]] &&
+				schedule.list[enrollTarget[0]].id == enrollTarget[1]) {
+			// User wants to drop the target. Check if the same id.
+			if (courseDrop(enrollTarget[0])) {
+				div.info_img[1].setAttribute(
+					"src",
+					"assets/img/enroll.png"
+				);
+				div.info_img[1].removeAttribute("drop");
+
+				enrollTarget[3] = !enrollTarget[3]; // Flip.
+			}
+		}
 });
 
 // Tooltip for enrolling.
@@ -950,8 +1134,7 @@ tooltipListener(div.info_img[1],
 	"<label>This has a conflict" +
 	" with another slot.</label>",
 	() => {
-		return !div.info_img[1].getAttribute("drop") &&
-			!div.info_img[1].getAttribute("enabled");
+		return !div.info_img[1].getAttribute("enabled");
 	}
 );
 
@@ -965,8 +1148,45 @@ tooltipListener(div.info_img[1],
 );
 
 
-//-- The 'course card' creation section. --//
+//-- The graphical part of the system. --//
 
+/**
+ * Create an entry in the summary sidebar.
+ * @param String name - Name of the course.
+ * @param Number id - ID of the slot.
+ * @param Object slot - The data of the slot.
+ * @return Object - The element that was added in the sidebar.
+**/
+function newSummary(name, id, slot) {
+	// Set up the entry for the summary sidebar.
+	let tr = elem("tr");
+	let l = [id, name, slot.section, slot.room];
+
+	for (let i in l) {
+		let td = elem("td");
+		td.innerHTML = l[i];
+
+		tr.appendChild(td);
+	}
+
+	tr.addEventListener("mousedown", event => {
+		if (event.button == 0)
+			showInfo(name, id, slot);
+	});
+
+	div.summary_tbody.appendChild(tr);
+
+	return tr;
+}
+
+/**
+ * Create slot entries in the application's screen (AKA cards). Hovering
+ * one of them will affect any related cards.
+ * @param String name - Name of the course.
+ * @param Number id - ID of the slot.
+ * @param Object slot - The data of the slot.
+ * @return Array[Object] - All the cards that were created.
+**/
 function newCard(name, id, slot) {
 	let y = slot.time[0]/60,
 		h = slot.time[1]/60;
@@ -985,21 +1205,12 @@ function newCard(name, id, slot) {
 			" Remaining") : "Full") +
 			"</label>";
 	let cards = [];
-
-	if (scroll_min == null) {
-		scroll_min = (slot.time[0] + slot.time[1])/0.6;
-		scroll_max = slot.time[0]/0.6;
-	} else {
-		scroll_min = Math.min(
-			(slot.time[0] + slot.time[1])/0.6,
-			scroll_min
-		);
-		scroll_max = Math.max(slot.time[0]/0.6, scroll_max);
-	}
+	let t; // Used to check if scroll boundaries should be resized or not.
 
 	for (let day in slot.day) {
 		// Make sure that this date can actually be visualized.
 		if (day_pos[slot.day[day]]) {
+			t = 1; // Can be visualized. Resize scroll boundaries.
 			let x = day_pos[slot.day[day]];
 			let card = elem("card"),
 				head = elem("label"),
@@ -1063,6 +1274,15 @@ function newCard(name, id, slot) {
 		}
 	}
 
+	if (t)
+		if (scroll_min == null) {
+			scroll_min = slot.time[0] + slot.time[1];
+			scroll_max = slot.time[0];
+		} else {
+			scroll_min = Math.min(slot.time[0] + slot.time[1], scroll_min);
+			scroll_max = Math.max(slot.time[0], scroll_max);
+		}
+
 	return cards;
 }
 
@@ -1071,30 +1291,36 @@ function newCard(name, id, slot) {
  * with the recently-searched-courses view.
 **/
 function oninput() {
+	let list = data[schedule.AYTerm];
+
 	// It's completely empty. Nothing to filter.
-	if (!data[schedule.AYTerm])
+	if (!list)
 		return;
 
 	// Separate the input from the spaces.
 	let txt = input.value.toUpperCase().match(/\S+/g) || [""];
 
 	// Check if the user is trying to check via slot ID.
-	for (let name in data[schedule.AYTerm])
-		if (data[schedule.AYTerm][name].slots[txt[0]]) {
+	if (!isNaN(Number(txt[0]))) for (let name in list)
+		if (list[name].slots[txt[0]]) {
 			// Redirect to the course's name with the ID.
 			txt = [name, txt[0]];
+
+			// Hide any tables if the slot is from another course.
+			if (courseScope && courseScope[0] != name)
+				list[courseScope[0]].table.style.display = "none";
 
 			break;
 		}
 
 	// See if there's a match on the user's input.
-	if (data[schedule.AYTerm][txt[0]]) {
+	if (list[txt[0]]) {
 		// Found a match in the searched courses.
-		let slots = data[schedule.AYTerm][txt[0]].slots;
+		let slots = list[txt[0]].slots;
 
 		if (!courseScope || courseScope[0] != txt[0])
 			// Make the table visible when the names match.
-			data[schedule.AYTerm][txt[0]].table.style.display = "";
+			list[txt[0]].table.style.display = "";
 
 		/* See if the user is trying to filter out the slots. Also
 		   only update if there is a difference from before.
@@ -1102,62 +1328,50 @@ function oninput() {
 		if (!courseScope ||
 			courseScope.toString() != txt.toString()) {
 			// This will help reduce lag by minimizing the effort.
-			let scope = [];
-
 			if (txt.length > 1) {
-				// User is attempting to filter.
-				for (let i in txt) {
-					/* Since the scope is empty at first, we direct it
-					   to the course's main slot list.
-					*/
-					let l = i == 1 ? slots : scope;
+				let id;
 
-					for (let n in l) {
-						/* See if the user is trying to search via
-						   slot id.
-						*/
-						if (slots[txt[i]]) {
-							// Matching ID found.
-							if (l[n] !== slots[txt[i]])
-								l[n].tr.style.display = "none";
-							else if (i == 1)
-								l[n].tr.style.display = "";
-						} else
-							/* Find something similar in the slot's
-							   literal (Most relevant data found
-							   in the slot).
-							*/
-							if (l[n].literal.search(txt[i]) == -1) {
-								// Not found in this slot. Hide it.
-								l[n].tr.style.display = "none";
+				// Iterate through each slot.
+				for (let n in slots) {
+					slots[n].tr.style.display = ""; // Set it visible first.
 
-								if (i > 1) {
-									// Remove from scope.
-									l.splice(n, 1);
+					// See if an existing ID is found in the filters.
+					if (id == null) {
+						// Iterate through each filter except the 1st one.
+						for (let i = 1; i < txt.length; i++) {
+							// See if the selected filter is an ID.
+							if (slots[txt[i]]) {
+								/* Set the ID so we don't have to iterate
+								   again.
+								*/
+								id = txt[i];
 
-									n--;
-								}
-							} else if (i == 1) {
-								// Append to scope.
-								l[n].tr.style.display = "";
+								// Hide it if it doesnt match with the ID.
+								if (id != n)
+									slots[n].tr.style.display = "none";
 
-								scope.push(l[n]);
+								break;
+							} else if (slots[n].literal
+							.search(txt[i]) == -1) {
+								/* Hide anything that doesn't match with
+								   all of the filters.
+								*/ 
+								slots[n].tr.style.display = "none";
+
+								break;
 							}
-					}
-
-					/* There's no need to continue when the user
-					   is searching via slot ID. We only need to
-					   loop once to hide the other slots.
-					*/
-					if (slots[txt[i]])
-						break;
+						}
+					} else if (id != n)
+						/* Since an ID was found, we no longer need to
+						   iterate through the filters, and only need
+						   to see if it has a matching ID.
+						*/
+						slots[n].tr.style.display = "none";
 				}
 			} else {
 				// User wants to see the entire output.
-				let l = data[schedule.AYTerm][txt[0]].slots;
-
-				for (let i in l)
-					l[i].tr.style.display = "";
+				for (let i in slots)
+					slots[i].tr.style.display = "";
 			}
 		}
 
@@ -1172,7 +1386,7 @@ function oninput() {
 
 	if (courseScope) {
 		// Hide the course view if visible.
-		data[schedule.AYTerm][courseScope[0]].table.style.display = "none";
+		list[courseScope[0]].table.style.display = "none";
 
 		courseScope = null;
 	}
@@ -1187,16 +1401,16 @@ function oninput() {
 		new RegExp(courseDumpPre + txt[0] + courseDumpSuf, "g")
 	);
 
-	for (let name in data[schedule.AYTerm]) {
+	for (let name in list) {
 		if (res !== null &&
 			res.indexOf(courseDumpSep + name) > -1) {
 			// Found a match. Make it visible.
 
-			if (data[schedule.AYTerm][name].word.style.display)
-				data[schedule.AYTerm][name].word.style.display = "";
-		} else if (!data[schedule.AYTerm][name].word.style.display)
+			if (list[name].word.style.display)
+				list[name].word.style.display = "";
+		} else if (!list[name].word.style.display)
 			// Text in the search input doesn't match. Hide it.
-			data[schedule.AYTerm][name].word.style.display = "none";
+			list[name].word.style.display = "none";
 	}
 }
 
@@ -1218,8 +1432,7 @@ ipcRenderer.on("request", (event, name, slots) => {
 	let entry = data[schedule.AYTerm][name];
 
 	// Make sure there's actually something to receive.
-	if (typeof(slots) !== "number" &&
-		Object.values(slots).length) {
+	if (typeof(slots) !== "number" && Object.values(slots).length) {
 		// Get rid of the previous data.
 		if (entry) {
 			div.dump.removeChild(entry.word);
@@ -1341,7 +1554,7 @@ ipcRenderer.on("request", (event, name, slots) => {
 				if (event.button == 0)
 					showInfo(name, id, slots[id]);
 				else if (event.button == 2)
-					courseEnroll(name, id);
+					courseEnroll(name, id, slots[id]);
 			});
 		}
 
@@ -1523,4 +1736,27 @@ document.addEventListener("mousemove", event => {
 		},
 		1
 	);
+}
+
+
+//-- See if there's anything to load. --//
+
+{
+	let v = ipcRenderer.sendSync("loaded");
+
+	if (v != -1) {
+		loadSchedule(getSched(v));
+
+		// Get rid of the search button emphasis.
+		if (div.help) {
+			let elm = div.help;
+			elm.style.opacity = 0;
+
+			setTimeout(
+				() => elm.parentElement.removeChild(elm), 1000
+			);
+
+			delete div.help;
+		}
+	}
 }

@@ -9,9 +9,56 @@ const grapes = require("./assets/js/grapes.js");
 const mower = require("./assets/js/mower.js");
 const data = {};
 
+// Used for loading a file after loading a new window.
+let file_queue = {};
+
 if (!fs.existsSync("cache"))
 	fs.mkdirSync("cache");
 
+function newWindow(file) {
+	grapes.init({
+		width: 800,
+		height: 600,
+		minWidth: 620,
+		minHeight: 450,
+		title: "Kunoichi",
+		show: false,
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+			preload: path.join(__dirname, "assets/js/preload.js")
+		}
+	}, (win) => {
+		file_queue[win.id] = file;
+
+		win.setMenu(null);
+		win.once("ready-to-show", win.show);
+		win.loadURL(path.join(__dirname, "index.html"));
+	});
+}
+
+// For creating new windows.
+ipcMain.on("window", (event, file) => newWindow(file));
+
+/* Used by the renderer if ta file should be loaded after the window
+   is finished loading.
+*/
+ipcMain.on("loaded", (event) => {
+	// Send a -1 if it doesn't need to load anything.
+	if (file_queue[event.sender.id]) {
+		event.returnValue = file_queue[event.sender.id] || -1;
+
+		delete file_queue[event.sender.id];
+	} else
+		event.returnValue = -1;
+});
+
+// For renaming a window.
+ipcMain.on("title", (event, txt) =>
+	BrowserWindow.fromWebContents(event.sender).setTitle(txt)
+);
+
+// For requesting course data.
 ipcMain.on("request", (event, course, ayterm) => {
 	ayterm = ayterm || mower.AYTerm;
 	course = course.toUpperCase();
@@ -27,14 +74,14 @@ ipcMain.on("request", (event, course, ayterm) => {
 		data[ayterm] = {};
 
 	// See if data was previously searched.
-	if (data[ayterm][course]) {
+	if (data[ayterm][course])
 		// Send cached data.
 		event.sender.send(
 			"request",
 			course,
 			data[ayterm][course]
 		);
-	} else {
+	else {
 		// Request data.
 		mower.once(course, arg => {
 			// If the window that requested for this was closed.
@@ -57,7 +104,7 @@ ipcMain.on("request", (event, course, ayterm) => {
 					event.sender.send(
 						"request",
 						course,
-						data[course]
+						data[ayterm][course]
 					);
 				} else
 					// No data found.
@@ -81,14 +128,7 @@ ipcMain.on("request", (event, course, ayterm) => {
 })
 
 function init() {
-	let test = grapes.init({
-		width: 800,
-		height: 600,
-		title: "Kunoichi"
-	}, (v) => {
-		v.setMenu(null);
-		v.loadURL(path.join(__dirname, "index.html"));
-	});
+	newWindow();
 }
 
 app.on("ready", init);

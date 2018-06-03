@@ -33,7 +33,6 @@ div {
 }
 
 div#summary {
-	position: absolute;
 	left: 100%;
 	width: 240px;
 	height: 100%;
@@ -76,14 +75,101 @@ div#summary tr:nth-child(odd) {
 	background-color: #dfdfdf;
 }
 
-div#warn {
+div#open {
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	pointer-events: none;
+	transition: all 0.2s;
+}
+
+div#open > div {
+	left: 50%;
+	top: 50%;
+	width: 280px;
+	height: 50%;
+	max-height: 400px;
+	background-color: #fff;
+	box-shadow: 0 0 1px #000;
+	transform: translate(-50%, -50%);
+}
+
+div#open > div > img {
+	position: absolute;
+	border-radius: 15px;
+	transition: all 0.2s;
+}
+
+div#open > div > img:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000;
+}
+
+div#open > div > img.new {
+	top: 10px;
+	left: calc(100% - 50px);
+	transform: translateX(-100%);
+}
+
+div#open > div > img.close {
+	top: 10px;
+	left: calc(100% - 10px);
+	transform: translateX(-100%);
+}
+
+div#open > div > label {
+	position: absolute;
+	top: 10px;
+	left: 20px;
+	line-height: 30px;
+	font-size: 18px;
+}
+
+div#open > div > div#listbox {
+	top: 50px;
+	height: calc(100% - 50px);
+	width: 100%;
+	overflow-y: auto;
+	transition: all 0.2s;
+}
+
+div#listbox *[right] {
+	position: absolute;
+	left: calc(100% - 5px);
+	transform: translateX(-100%);
+}
+
+div#open > div > div#listbox > label {
+	display: block;
+	padding: 5px;
+	padding-left: 10px;
+	font-size: 16px;
+	transition: all 0.2s;
+}
+
+div#open > div > div#listbox > label:hover {
+	padding-left: 20px;
+	background-color: #dfdfdf;
+}
+
+div#open > div > div#listbox > label:active {
+	background-color: #afafaf;
+	transition: none;
+}
+
+div#open > div > div#listbox > label > label {
+	display: inline;
+	font-size: 14px;
+}
+
+div#dialog {
 	opacity: 0;
 	width: 100%;
 	height: 100%;
 	transition: all 0.2s;
 }
 
-div#warn div {
+div#dialog > div {
 	display: inline-block;
 	top: 50%;
 	left: 50%;
@@ -95,7 +181,7 @@ div#warn div {
 	transition: height 0.2s;
 }
 
-div#warn div label {
+div#dialog > div > label {
 	display: block;
 	top: 15px;
 	left: 0;
@@ -104,7 +190,7 @@ div#warn div label {
 	font-size: 16px;
 }
 
-div#warn div table {
+div#dialog > div > table {
 	width: 100%;
 	margin-top: 10px;
 	border: none;
@@ -112,7 +198,7 @@ div#warn div table {
 	table-layout: fixed;
 }
 
-div#warn div table label {
+div#dialog > div > table label {
 	position: relative;
 	top: 0;
 	left: calc(50% - 5px);
@@ -121,15 +207,16 @@ div#warn div table label {
 	margin: 5px;
 	max-width: 100px;
 	font-weight: bolder;
+	text-align: center;
 	transform: translateX(-50%);
 	transition: all 0.2s;
 }
 
-div#warn div table label:hover {
+div#dialog > div > table label:hover {
 	box-shadow: 0 0 0 1px #000, 0 0 10px #000;
 }
 
-div#warn div table label:active {
+div#dialog > div > table label:active {
 	background-color: #dfdfdf;
 	transition: none;
 }
@@ -142,7 +229,7 @@ div#prompt {
 	pointer-events: none;
 }
 
-div#prompt div {
+div#prompt > div {
 	top: 50%;
 	left: 50%;
 	width: 240px;
@@ -153,7 +240,7 @@ div#prompt div {
 	transition: height 0.2s;
 }
 
-div#prompt div label {
+div#prompt > div > label {
 	position: absolute;
 	display: block;
 	top: 15px;
@@ -165,7 +252,7 @@ div#prompt div label {
 	pointer-events: none;
 }
 
-div#prompt div label[warn] {
+div#prompt > div > label[warn] {
 	top: 90px;
 	opacity: 0;
 	color: #ff0000;
@@ -174,7 +261,7 @@ div#prompt div label[warn] {
 	font-size: 14px;
 }
 
-div#prompt div input {
+div#prompt > div > input {
 	position: absolute;
 	top: 50px;
 	left: 50%;
@@ -189,11 +276,11 @@ div#prompt div input {
 	transition: all 0.2s;
 }
 
-div#prompt div input:focus {
+div#prompt > div > input:focus {
 	background: none;
 }
 
-div#prompt div border {
+div#prompt > div > border {
 	position: absolute;
 	top: 80px;
 	left: 50%;
@@ -205,27 +292,27 @@ div#prompt div border {
 	pointer-events: none;
 }
 
-div#prompt div input:focus + border {
+div#prompt > div > input:focus + border {
 	width: 180px;
 }
 
-div#prompt div img {
+div#prompt > div > img {
 	top: calc(100% - 50px);
 	border-radius: 20px;
 	transition: all 0.2s;
 }
 
-div#prompt div img:hover {
+div#prompt > div > img:hover {
 	background-color: #fff;
 	box-shadow: 0 0 5px #000;
 }
 
-div#prompt div img#confirm {
+div#prompt > div > img#confirm {
 	position: absolute;
 	left: 50px;
 }
 
-div#prompt div img#cancel {
+div#prompt > div > img#cancel {
 	position: absolute;
 	left: 150px;
 }
@@ -605,6 +692,14 @@ div#message label {
 	transition: all 0.2s;
 }
 
+div#message label[type="1"] {
+	box-shadow: -7px 0 #cf7f00;
+}
+
+div#message label[type="2"] {
+	box-shadow: -7px 0 #7f0000;
+}
+
 div#message label:hover {
 	transform: translateX(-10px);
 }
@@ -675,7 +770,7 @@ card {
 }
 
 card[hover] {
-	box-shadow: 0 0 0 1px #000, 0 0 10px #000;
+	box-shadow: 0 0 10px #000, 0 0 0 1px #000;
 	z-index: 1;
 }
 
@@ -830,10 +925,6 @@ img#cap {
 }
 
 *[center] {
-	text-align: center !important;
-}
-
-*[right] {
 	text-align: center !important;
 }
 

@@ -52,9 +52,8 @@ this.init = (properties, hook) => {
 		this.pop(n);
 	})
 
-	if (hook) {
+	if (hook)
 		hook(v, n);
-	}
 
 	return v;
 }

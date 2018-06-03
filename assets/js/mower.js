@@ -54,7 +54,6 @@ function parse(arg) {
 			professor = arg[i].prof;
 
 		id = id ? id : null;
-		name = name ? name[0] : null;
 		section = section ? section[0] : null;
 		day = day ? day : [];
 		time = time ? time : [];
@@ -88,7 +87,6 @@ function parse(arg) {
 		} else {
 			// Record data.
 			data[id] = {
-				name: name,
 				section: section,
 				day: day,
 				time: time,
@@ -208,7 +206,7 @@ if (navigator.onLine) {\
 		");
 	});
 
-	win.loadURL("http://enroll.dlsu.edu.ph/dlsu/view_actual_count");
+	win.loadURL("https://enroll.dlsu.edu.ph/dlsu/view_actual_count");
 
 	ipcMain.once("MOWER_" + course, (event, arg) => {
 		sent = 1;
@@ -240,7 +238,7 @@ this.once = (channel, listener) => {
 **/
 this.requestAYTerm = () => {
 	let req = net.request(
-		"http://www.dlsu.edu.ph/" +
+		"https://www.dlsu.edu.ph/" +
 		"offices/registrar/schedules/enroll_ug.pdf"
 	);
 
