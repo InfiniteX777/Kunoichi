@@ -51,14 +51,15 @@ function parse(arg) {
 			cap = Number(arg[i][6]),
 			enrolled = Number(arg[i][7]),
 			remarks = arg[i][8],
-			professor = arg[i].prof;
+			professor = arg[i].prof ? // Get rid of extra spaces.
+				arg[i].prof.match(/\S+/g).join(" ") : "";
 
-		id = id ? id : null;
-		section = section ? section[0] : null;
+		id = id != null ? id : null;
+		section = section != null ? section[0] : null;
 		day = day ? day : [];
 		time = time ? time : [];
-		cap = cap ? cap : null;
-		enrolled = enrolled ? enrolled : null;
+		cap = cap != null ? cap : null;
+		enrolled = enrolled != null ? enrolled : null;
 
 		// Parse the time.
 		for (let n = 0; n < 2; n++) {

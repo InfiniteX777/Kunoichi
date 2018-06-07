@@ -3,12 +3,16 @@ const html2canvas = require("html2canvas");
 const {ipcRenderer, remote} = require("electron");
 const mower = remote.require("./assets/js/mower.js");
 const {Menu, MenuItem} = remote;
-
+// Used to check if there's an unacceptable character for file names.
+const nonfilechar = /[\\/:*?"<>|]/;
+const nonfilechar_warn = "You cant use the following characters:" +
+	"<br>\\ / : * ? \" < > |";
 // Shortcuts.
 const elem = document.createElement.bind(document),
 	body = document.body,
 	getId = document.getElementById.bind(document),
-	getTag = document.getElementsByTagName.bind(document);
+	getTag = document.getElementsByTagName.bind(document),
+	getClass = document.getElementsByClassName.bind(document);
 // Offset
 const day_pos = {
 	"M": 1,
@@ -20,6 +24,23 @@ const day_pos = {
 };
 // The actual screen isn't exactly at (0, 0).
 const scroll_offset = 35;
+/* The data of what a schedule file should look like. Everything in here
+   are the default values.
+*/
+const schedule_default = {
+	// List of all the courses the user has enrolled.
+	list: {},
+	/* Wait for the application to get the AYTerm from DLSU, otherwise
+	   let the user choose a file to load first.
+	*/
+	AYTerm: null,
+	// Start with null to prompt the user for a name.
+	name: null,
+	// Auto-search on file load. Neat stuff yo.
+	autosearch: true,
+	// Auto-save whenever the user does something important.
+	autosave: true
+}
 
 
 //-- Options. --//
@@ -60,6 +81,16 @@ div.course_table = getId("table");
 // The time indicator that follows your cursor.
 div.time = getId("time");
 
+// The config window.
+div.config = getId("config");
+div.config_dim = div.config.getElementsByTagName("dim")[0];
+div.config_img = div.config.getElementsByTagName("img")[0];
+div.config_div = div.config.getElementsByTagName("div")[1];
+div.config_input = div.config.getElementsByTagName("input");
+div.config_check = div.config.getElementsByTagName("check");
+div.config_dropdown = div.config.getElementsByTagName("dropdown")[0]
+	.getElementsByTagName("div")[0];
+
 // The info window.
 div.info = getId("info");
 div.info_div = div.info.getElementsByTagName("div")[0];
@@ -94,11 +125,11 @@ div.summary_list = {};
 
 let img = {
 	// The save button. Should only appear once since it auto-saves.
-	save: getId("save"),
+	save: getClass("save")[0],
 	// Load button. Also functions as a 'new window' button.
-	load: getId("load"),
-	config: getId("config"),
-	search: getId("search").getElementsByTagName("img")[0]
+	load: getClass("load")[0],
+	config: getClass("config")[0],
+	search: getClass("search")[0]
 };
 
 let label = {
@@ -122,19 +153,8 @@ let tooltip;
    since the file writing is incredibly fast.
 */
 let saveBuffer = 0;
-/* The data of the current schedule which holds the courses,
-   academic year and term, date created and changed, and file
-   name.
-*/
-let schedule = {
-	list: {},
-	/* Wait for the application to get the AYTerm from DLSU, otherwise
-	   let the user choose a file to load first.
-	*/
-	AYTerm: null,
-	// Start with null to prompt the user for a name.
-	name: null
-};
+// The user's schedule. Copy the default schedule.
+let schedule = Object.assign({}, schedule_default);
 /* Used for the info window. Should be an array; [name, id, state].
    If 'state' has a 'non-false' value, it will enroll the target,
    otherwise it will drop it if it exists in the 'schedule'
@@ -283,7 +303,7 @@ function sendMessage(str, callback, lifetime, type) {
 		tick++;
 	});
 	elm.addEventListener("mouseleave", () => {
-		if (lifetime)
+		if (lifetime && tick != -1)
 			timer();
 	});
 
@@ -361,7 +381,7 @@ function parseTime(v) {
 }
 
 
-//-- File saving. --//
+//-- Academic year and term request. --//
 
 label.AYTerm.addEventListener("mouseenter", () => {
 	label.AYTerm.style.opacity = 1;
@@ -376,10 +396,15 @@ label.AYTerm.addEventListener("mouseleave", () => {
 // Make sure that the file has yet to have its AYTerm set.
 if (schedule.AYTerm) {
 	label.AYTerm.innerHTML = schedule.AYTerm;
+
+	config_AYTerm(schedule.AYTerm);
 } else if (mower.AYTerm) {
 	// Set current AYTerm with the latest.
 	schedule.AYTerm = mower.AYTerm;
 	label.AYTerm.innerHTML = mower.AYTerm;
+	div.config_input[1].value = mower.AYTerm;
+
+	config_AYTerm(mower.AYTerm);
 } else {
 	/* Try to request for current academic year and term.
 	   Otherwise, make use of the offline cache.
@@ -399,26 +424,38 @@ if (schedule.AYTerm) {
 	mower.once("_AYTERM", arg => {
 		schedule.AYTerm = arg;
 		label.AYTerm.innerHTML = arg;
+		div.config_input[1].value = arg;
+
+		config_AYTerm(arg);
 	});
 	mower.requestAYTerm(); // Make a request.
 }
 
+
+//-- File saving. --//
+
 function saveData() {
+	// Make it asynchronous.
 	setTimeout(() => {
 		saveBuffer += 1;
 
-		// Copy data.
-		let data = {
-			AYTerm: schedule.AYTerm
-		};
+		// Copy the schedule.
+		let data = Object.assign({}, schedule);
 
-		// Delete all unneeded data.
+		// Update internal record for modification date.
+		data.modified = new Date();
+
+		// Get rid of the list since its directly pointing to real data.
+		data.list = {};
+
+		// Get the list manually.
 		for (let name in schedule.list) {
-			data[name] = Object.assign({}, schedule.list[name]);
+			data.list[name] = Object.assign({}, schedule.list[name]);
 
-			delete data[name].cards;
-			delete data[name].tr;
-			delete data[name].literal;
+			// Delete unncessary data.
+			delete data.list[name].cards;
+			delete data.list[name].tr;
+			delete data.list[name].literal;
 		}
 
 		data = JSON.stringify(data, null, "	");
@@ -438,7 +475,22 @@ function saveData() {
 	});
 }
 
-img.save.addEventListener("click", event => {
+/**
+ * Properly assess if the application should reveal the save button or
+ * just auto-save it.
+**/
+function doSave() {
+	if (!schedule.name || !schedule.autosave) {
+		// Show the holy button of justice.
+		img.save.style.opacity = 1;
+		img.save.style.pointerEvents = "auto";
+	} else
+		// The user is no fun. Just auto-save it.
+		saveData();
+}
+
+function prompt_show() {
+	// Look for a suitable name for that wonderful schedule they got.
 	let filename = 1;
 
 	while (1)
@@ -450,33 +502,32 @@ img.save.addEventListener("click", event => {
 			break;
 		}
 
+	// Show the window.
 	div.prompt.style.pointerEvents = "auto";
 	div.prompt.style.opacity = 1;
 
+	/* Set the placeholder so the user knows what the name would be
+	   if left empty.
+	*/
 	div.prompt_input.setAttribute("placeholder", filename);
 	div.prompt_input.focus();
-});
-
-tooltipListener(
-	img.save,
-	"<label>Save Schedule</label>",
-	null,
-	1
-);
+}
 
 function prompt_save_func(filename) {
 	schedule.name = filename;
 
 	prompt_hide();
-	setTimeout(() => {
-		div.prompt.parentElement.removeChild(div.prompt);
 
-		delete div.prompt;
-	}, 1000);
+	// Add the creation date stamp.
+	schedule.created = new Date();
 
 	ipcRenderer.send("title", filename); // Rename the window.
 	saveData();
 	sendMessage("Schedule will now automatically save.", null, 3);
+
+	// Hide the save button.
+	img.save.style.opacity = "";
+	img.save.style.pointerEvents = "";
 }
 
 function prompt_save() {
@@ -498,7 +549,39 @@ function prompt_save() {
 		prompt_save_func(filename);
 }
 
+img.save.addEventListener("click", event => {
+	// See if it's already saved.
+	if (schedule.name) {
+		saveData();
+
+		// Hide it again.
+		img.save.style.opacity = "";
+		img.save.style.pointerEvents = "";
+	} else
+		prompt_show();
+});
+
+tooltipListener(
+	img.save,
+	"<label>Save Schedule</label>",
+	null,
+	1
+);
+
 div.prompt_img[0].addEventListener("click", prompt_save);
+
+div.prompt_input.addEventListener("input", event => {
+	if (nonfilechar.test(event.data)) {
+		div.prompt_input.value = div.prompt_input.value.slice(0, -1);
+
+		sendMessage(
+			nonfilechar_warn,
+			null,
+			2
+		);
+	}
+});
+
 div.prompt_input.addEventListener("keydown", event => {
 	if (event.key === "Enter")
 		prompt_save();
@@ -536,7 +619,9 @@ tooltipListener(
 //-- Schedule functions. --//
 
 /**
- * Load a saved schedule. This will also update the schedule.
+ * Load a saved schedule. This will also update the schedule. This can also
+ * be used for loading a blank schedule to reset everything to default.
+ * @param Object sched - the schedule.
 **/
 function loadSchedule(sched) {
 	// Get rid of the previous schedule.
@@ -559,6 +644,11 @@ function loadSchedule(sched) {
 		slot.cards = newCard(name, slot.id, slot);
 		slot.tr = newSummary(name, slot.id, slot);
 
+		// Try to request for them if allowed.
+		if (sched.autosearch)
+			ipcRenderer.send("request", name, sched.AYTerm);
+
+		// Measure the scroll boundaries.
 		if (scroll_min != null)
 			scroll_min = Math.min(slot.time[0] + slot.time[1], scroll_min);
 		else
@@ -581,8 +671,37 @@ function loadSchedule(sched) {
 	// Replace.
 	schedule = sched;
 
-	ipcRenderer.send("title", sched.name); // Rename the window.
-	sendMessage("Loaded '" + sched.name + "'.", null, 2); // Message user.
+	// Adapt configuration window.
+	div.config_input[0].value = sched.name;
+	div.config_input[1].value = sched.AYTerm;
+
+	div.config_input[2].removeAttribute("lock");
+
+	if (sched.autosearch)
+		div.config_check[0].setAttribute("active", 1);
+	else
+		div.config_check[0].removeAttribute("active");
+
+	if (sched.autosave)
+		div.config_check[1].setAttribute("active", 1);
+	else
+		div.config_check[1].removeAttribute("active");
+
+	if (sched.name)
+		div.config_input[2].removeAttribute("lock");
+	else
+		div.config_input[2].setAttribute("lock", 1);
+
+	// Rename the window.
+	ipcRenderer.send(
+		"title",
+		sched.name || "New Schedule"
+	);
+
+	// Message user.
+	if (sched.name)
+		sendMessage("Loaded '" + sched.name + "'.", null, 2);
+
 	scrollTo(0); // Scroll to top.
 }
 
@@ -597,36 +716,30 @@ function loadSchedule(sched) {
 **/
 function getSched(filepath) {
 	try {
-		let ayterm;
-		let sched = {};
-		let file = JSON.parse(fs.readFileSync(filepath));
+		let sched = JSON.parse(fs.readFileSync(filepath));
+		let list = sched.list;
 
-		for (let i in file)
-			if (i === "AYTerm") {
-				if (file[i] == null)
-					// You can't enroll without AYTerm.
-					throw null;
+		// Check if there's anything wrong before doing something.
+		if (!list)
+			throw null;
 
-				ayterm = file[i]; // Transfer to variable.
+		// Get the name.
+		sched.name = filepath.match(/\\.+$/)[0].slice(1, -5);
 
-				delete file[i]; // Delete it.
-			} else if (!file[i].day || !file[i].time)
+		for (let i in list)
+			if (!list[i].day || !list[i].time)
 				// Get rid of faulty data.
-				delete file[i];
+				delete list[i];
 			else
 				// Formalize data.
-				file[i].literal = file[i].section + " " +
-					file[i].day.join("") + " " +
-					parseTime(file[i].time[0]) + " - " +
-					parseTime(file[i].time[0] + file[i].time[1]) + " " +
-					file[i].room;
+				list[i].literal = list[i].section + " " +
+					list[i].day.join("") + " " +
+					parseTime(list[i].time[0]) + " - " +
+					parseTime(list[i].time[0] + list[i].time[1]) + " " +
+					list[i].room;
 
 		// All good. Return the schedule.
-		return {
-			name: filepath.match(/\\.+$/)[0].slice(1, -5), // Get the name.
-			AYTerm: ayterm,
-			list: file // Point it to the file.
-		};
+		return sched;
 	} catch (err) { }
 }
 
@@ -661,13 +774,15 @@ function showSchedBrowser() {
 			label.innerHTML = name + "<br><label>" + sched.AYTerm +
 				"</label><label right>" + d + "</label>";
 
-			label.addEventListener("mousedown", event => {
-				if (event.button == 0) {
-					div.open.style.pointerEvents = "";
-					div.open.style.opacity = "";
+			label.addEventListener("click", event => {
+				div.open.style.pointerEvents = "";
+				div.open.style.opacity = "";
 
-					loadSchedule(sched);
-				} else if (event.button == 2) {
+				loadSchedule(sched);
+			});
+
+			label.addEventListener("mouseup", event => {
+				if (event.button == 2) {
 					div.open.style.pointerEvents = "";
 					div.open.style.opacity = "";
 
@@ -677,7 +792,8 @@ function showSchedBrowser() {
 
 			div.open_listbox.appendChild(label);
 		} else sendMessage(
-			"Can't load '" + name + "'.<br>It's probably corrupted :(",
+			"Can't load '" + name + "'.<br>It's probably corrupted :(" +
+			"<br><br>You can still find the file in the 'save' directory.",
 			null,
 			3,
 			2
@@ -688,10 +804,18 @@ function showSchedBrowser() {
 	div.open.style.opacity = 1;
 }
 
+// Load button.
 img.load.addEventListener("mousedown", event => {
 	if (event.button == 0)
 		showSchedBrowser();
 });
+
+tooltipListener(
+	img.load,
+	"<label>Open/New Schedule</label>",
+	null,
+	1
+);
 
 // New window button.
 div.open_img[0].addEventListener("click", event => {
@@ -860,13 +984,14 @@ document.addEventListener("mousemove", tooltipMove);
  * @param String value - The message.
  * @param Function cond - The condition fired when hovering.
 		The function must return a value that doesn't equate
-		to 'false' (zero, empty string, etc).
+		to 'false' (zero, empty string, etc). 'elm' is passed
+		as the argument.
  * @param Integer flag - 0 = None; 1 = Hide on focus or mouse down.
  * @return Object elm.
 **/
 function tooltipListener(elm, value, cond, flag) {
 	elm.addEventListener("mouseenter", event => {
-		if (!cond || cond()) {
+		if (!cond || cond(elm)) {
 			tooltip = elm;
 			div.tooltip.innerHTML = value;
 			div.tooltip.style.display = "block";
@@ -930,14 +1055,8 @@ function courseEnroll(name, id, slot) {
 			innerHeight/2 // Screen size.
 		);
 
-		// Check if this schedule was already named.
-		if (schedule.name)
-			saveData(); // Autosave.
-		else {
-			// Reveal the save button.
-			img.save.style.opacity = 1;
-			img.save.style.pointerEvents = "auto";
-		}
+		// Save it.
+		doSave();
 
 		return true; // Sucessfully added to schedule.
 	}
@@ -975,7 +1094,7 @@ function courseDrop(name) {
 
 				if (max)
 					if (scroll_max != null)
-						scroll_max = Math.max(slot.time[0], scroll_max);
+						scroll_max = Math.max(v.time[0], scroll_max);
 					else
 						scroll_max = slot.time[0];
 			}
@@ -996,9 +1115,8 @@ function courseDrop(name) {
 			setSpook(); // lolol
 		}
 
-		// Only save when the schedule is properly set up.
-		if (schedule.name)
-			saveData();
+		// Save it.
+		doSave();
 
 		return true; // Successfully removed from schedule.
 	}
@@ -1226,13 +1344,14 @@ function newCard(name, id, slot) {
 			head.innerHTML = name;
 
 			body.class = "body";
-			body.innerHTML = slot.section + "<br>" +
+			body.innerHTML = id + "<br>" +
+				slot.section + "<br>" +
 				slot.room + "<br>" +
 				t1 + " - " + t2;
 			body.setAttribute("class", "body");
 
-			cap.id = "cap";
 			cap.src = cap_src;
+			cap.setAttribute("class", "cap");
 			cap.setAttribute("draggable", false);
 
 			card.style.left = x*100 + "%";
@@ -1422,13 +1541,6 @@ ipcRenderer.on("request", (event, name, slots) => {
 	if (!data[schedule.AYTerm])
 		data[schedule.AYTerm] = {};
 
-	if (request_elm[name]) {
-		// Close the 'requesting for...' message.
-		request_elm[name][1]();
-
-		delete request_elm[name];
-	}
-
 	let entry = data[schedule.AYTerm][name];
 
 	// Make sure there's actually something to receive.
@@ -1442,6 +1554,7 @@ ipcRenderer.on("request", (event, name, slots) => {
 		// Add search text box recent list.
 		courseDump += courseDumpSep + name;
 
+		// Create the 'word' that auto-completes the search textbox.
 		let word = elem("label");
 		word.innerHTML = "#" + name + " ";
 
@@ -1472,16 +1585,11 @@ ipcRenderer.on("request", (event, name, slots) => {
 		};
 		entry = data[schedule.AYTerm][name];
 
-		// Hide it by default.
+		// Hide the table by default.
 		entry.table.style.display = "none";
 
-		entry.table.setAttribute(
-			"class",
-			"course"
-		);
-		div.course_table.appendChild(
-			entry.table
-		);
+		entry.table.setAttribute("class", "course");
+		div.course_table.appendChild(entry.table);
 
 
 		//-- Iterate through each slot to setup the table. --//
@@ -1498,7 +1606,30 @@ ipcRenderer.on("request", (event, name, slots) => {
 
 			entry.table.appendChild(tr);
 
-			// Will be used to create the 'td' element for the table.
+
+			// See if the user has enrolled a slot from this course.
+			let v = schedule.list[name];
+
+			if (v && v.id == id) {
+				// Update everything!
+				for (let i in slot) if (i != "tr")
+					v[i] = slot[i];
+
+				// Replace the cards.
+				for (let i in v.cards)
+					div.deck.removeChild(v.cards[i]);
+
+				v.cards = newCard(name, id, v);
+
+				// Replace the summary sidebar entry.
+				div.summary_tbody.removeChild(v.tr);
+				v.tr = newSummary(name, id, v);
+
+				sendMessage("Updated '" + name + "'.", null, 2);
+			}
+
+
+			// Write down some of the data into the table.
 			function td(label, desc) {
 				let td = elem("td");
 				td.innerHTML = label;
@@ -1508,9 +1639,6 @@ ipcRenderer.on("request", (event, name, slots) => {
 
 				return td;
 			}
-
-
-			// Append some of the information.
 
 			// Section.
 			td(slot.section).setAttribute("bold", 1);
@@ -1559,19 +1687,35 @@ ipcRenderer.on("request", (event, name, slots) => {
 		}
 
 		// Send a message to the user.
-		sendMessage(
-			"'" + name + "' data received.", null, 2
-		);
-	} else if (slots == -3)
-		sendMessage(
-			"No slots were being offered for '" + name + "'.",
-			null,
-			2
-		);
-	else
-		sendMessage(
-			"Could not receive data for '" + name + "'.", null, 2
-		);
+		if (request_elm[name])
+			sendMessage(
+				"'" + name + "' data received.", null, 2
+			);
+	} else if (request_elm[name])
+		if (slots == -3)
+			sendMessage(
+				"No slots were being offered for '" + name + "'.",
+				null,
+				2
+			);
+		else if (slots == -1)
+			sendMessage(
+				"Request timed out for '" + name + "'.<br><br>" +
+				"Maybe try again later?",
+				null,
+				2
+			);
+		else
+			sendMessage(
+				"Could not receive data for '" + name + "'.", null, 2
+			);
+
+	if (request_elm[name]) {
+		// Close the 'requesting for...' message.
+		request_elm[name][1]();
+
+		delete request_elm[name];
+	}
 
 	if (entry) {
 		// Put the course's 'recent' element at the top.
@@ -1675,14 +1819,315 @@ tooltipListener(
 );
 
 
-//-- Load, Save, and Config buttons. --//
+//-- Configuration window. --//
+
+/**
+ * If 'txt' is provided, add it to the AYTerm dropdown options, otherwise
+ * add all existing AYTerm in the cache.
+ * @param String txt - the 'AYTerm' entry.
+**/
+function config_AYTerm(txt) {
+	if (txt) {
+		if (div.config_dropdown.innerHTML.search(txt) == -1)
+			div.config_dropdown.innerHTML += "<label>" + txt + "</label>";
+	} else {
+		let v = fs.existsSync("cache") && fs.readdirSync("cache").filter(
+			name => isdir("cache" + "\\" + name)
+		);
+
+		// Set the AYTerm with the offline cache's latest.
+		if (v) for (let i in v)
+			if (div.config_dropdown.innerHTML.search(v[i]) == -1)
+				div.config_dropdown.innerHTML += "<label>" +
+				v[i] + "</label>";
+	}
+}
+
+function config_close() {
+	div.config.style.opacity = "";
+	div.config.style.pointerEvents = "";
+}
+
+/**
+ * Sets the dropdown element's functions and behavior. Not providing an
+ * element will create a new one instead.
+ * @param Object v - the element, should be a 'dropdown' otherwise it
+ * won't have the proper animations.
+ * @param Array[String] options - the options the dropdown can choose
+ * from.
+ * @return Object - the 'dropdown' element.
+**/
+function setDropdown(dropdown, options) {
+	let dropdown_div; // Container for the options.
+	let input; // The input.
+
+	function all() {
+		let labels = dropdown.getElementsByTagName("label");
+
+		for (let i = 0; i < labels.length; i++)
+			labels[i].style.display = "";
+	}
+
+	if (!dropdown) {
+		input = elem("input");
+		input.setAttribute("type", "text");
+
+		dropdown = elem("dropdown");
+		dropdown.appendChild(input);
+
+		dropdown_div = elem("div");
+		dropdown.appendChild(dropdown_div);
+	} else
+		input = dropdown.getElementsByTagName("input")[0];
+
+	dropdown.addEventListener("mousedown", event => {
+		// See if the target is a label (we use label tags as the options).
+		if (event.target && event.target.tagName == "LABEL")
+			input.value = event.target.innerHTML;
+	});
+
+	// Append the new options.
+	if (options)
+		for (let i in options) {
+			let label = document.createElement("label");
+			label.innerHTML = options[i];
+
+			dropdown_div.appendChild(label);
+		}
+
+	// Setup filtering.
+	input.addEventListener("input", event => {
+		// New list of options since the user might've added new ones.
+		let labels = dropdown.getElementsByTagName("label");
+
+
+		for (let i = 0; i < labels.length; i++) {
+			let v = labels[i];
+
+			v.style.display = v.innerHTML.toUpperCase()
+				.search(input.value.toUpperCase()) == -1 ? "none" : "";
+		}
+	});
+
+	return dropdown;
+}
+
+{
+	// Load all 'check' elements.
+	let checks = getTag("check");
+
+	for (let i = 0; i < checks.length; i++)
+		checks[i].addEventListener("click", event => {
+			if (checks[i].getAttribute("active") != null)
+				checks[i].removeAttribute("active");
+			else
+				checks[i].setAttribute("active", 1);
+		});
+
+	// Load all 'warn' elements.
+	let warns = getTag("warn");
+
+	for (let i = 0; i < warns.length; i++)
+		tooltipListener(
+			warns[i],
+			"<label>" + warns[i].getAttribute("value") + "</label>",
+			v => {
+				v.style.animation = "none"; // Stop the animation.
+
+				return 1;
+			}
+		);
+
+	// Load all 'dropdown' elements.
+	let dropdowns = getTag("dropdown");
+
+	for (let i = 0; i < dropdowns.length; i++)
+		setDropdown(dropdowns[i]);
+
+	// Add all AYTerm from cache.
+	config_AYTerm();
+}
+
+img.config.addEventListener("mousedown", event => {
+	if (event.button == 0) {
+		div.config.style.opacity = 1;
+		div.config.style.pointerEvents = "auto";
+	}
+});
+
+// Schedule name.
+{
+	div.config_input[0].addEventListener("keydown", event => {
+		if (event.key === "Enter")
+			div.config_input[0].blur();
+	});
+
+	div.config_input[0].addEventListener("input", event => {
+		if (nonfilechar.test(event.data)) {
+			div.config_input[0].value = div.config_input[0].value
+				.slice(0, -1);
+
+			sendMessage(
+				nonfilechar_warn,
+				null,
+				2
+			);
+		}
+	});
+
+	div.config_input[0].addEventListener("focus", event => {
+		if (!schedule.name)
+			prompt_show();
+	});
+
+	div.config_input[0].addEventListener("focusout", event => {
+		// See if there's anything in the input.
+		if (div.config_input[0].value) {
+			let a = schedule.name; // old name.
+			let b = div.config_input[0].value; // new name.
+
+			// Break if same name.
+			if (a === b) return;
+
+			// See if the name is being used.
+			if (fs.existsSync("save\\" + b + ".json"))
+				// Prompt the user if they want to overwrite.
+				showDialog(
+					"'" + b + "' is being used by another " +
+					"schedule!",
+					["Overwrite", "Cancel"],
+					(event, i) => {
+						if (i)
+							// Change back to old name.
+							div.config_input[0].value = a;
+						else {
+							// Change to new name.
+							schedule.name = b;
+
+							// Rename.
+							fs.renameSync(
+								"save\\" + a + ".json",
+								"save\\" + b + ".json"
+							);
+
+							sendMessage(
+								"File renamed to '" + b + "'.",
+								null,
+								2
+							);
+						}
+
+						return 1;
+					}
+				);
+			else {
+				// Change to new name.
+				schedule.name = b;
+
+				// Rename.
+				fs.renameSync(
+					"save\\" + a + ".json",
+					"save\\" + b + ".json"
+				);
+
+				sendMessage(
+					"Successfully renamed to '" + b + "'.",
+					null,
+					2
+				);
+			}
+		} else
+			// Revert to previous name since user didn't put anything.
+			div.config_input[0].value = schedule.name;
+	});
+}
+
+// Academic year and term.
+{
+	div.config_input[1].addEventListener("focusout", event => {
+		let v = div.config_input[1].value;
+
+		// Only do something if there's actually a difference.
+		if (v && schedule.AYTerm !== v) {
+			schedule.AYTerm = v;
+
+			// Only save proper schedules.
+			doSave();
+		} else
+			// Set it back if something went wrong.
+			div.config_input[1].value = schedule.AYTerm;
+
+		// Reveal all the options again.
+		let labels = div.config_dropdown.getElementsByTagName("label");
+
+		for (let i = 0; i < labels.length; i++)
+			labels[i].style.display = "";
+	});
+}
+
+// Checkboxes.
+{
+	// Auto-search.
+	div.config_check[0].addEventListener("click", event => {
+		if (div.config_check[0].getAttribute("active"))
+			schedule.autosearch = true;
+		else
+			delete schedule.autosearch;
+
+		// Save it.
+		doSave();
+	});
+
+	// Auto-save.
+	div.config_check[1].addEventListener("click", event => {
+		if (div.config_check[1].getAttribute("active")) {
+			schedule.autosave = true;
+
+			// Hide the button.
+			img.save.style.opacity = "";
+			img.save.style.pointerEvents = "";
+		} else
+			delete schedule.autosave;
+
+		// Save it.
+		doSave();
+	});
+}
+
+div.config_img.addEventListener("click", config_close);
+div.config_dim.addEventListener("mousedown", config_close);
+
+div.config_input[2].addEventListener("click", event => {
+	if (div.config_input[2].getAttribute("lock") == null)
+		showDialog(
+			"This will permanently remove your schedule." +
+			" Are you really, really sure about this?",
+			["Yes", "No"],
+			(event, i) => {
+				if (!i) {
+					// Delete file.
+					fs.unlinkSync("save\\" + schedule.name + ".json");
+					// Send message.
+					sendMessage(
+						"Goodbye, '" + schedule.name + "' :(<br><br>" +
+						"Settings have been reverted back to default.",
+						null,
+						2
+					);
+					// Load a blank schedule.
+					loadSchedule(Object.assign({}, schedule_default));
+				}
+
+				return 1;
+			}
+		);
+});
 
 tooltipListener(
-	img.load,
-	"<label>Open/New Schedule</label>",
-	null,
-	1
-);
+	div.config_input[2],
+	"<label>You haven't saved this schedule.</label>",
+	() => div.config_input[2].getAttribute("lock") != null
+)
 
 tooltipListener(
 	img.config,

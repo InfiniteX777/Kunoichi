@@ -1,6 +1,6 @@
 {
   "name": "Kunoichi",
-  "version": "0.1.0",
+  "version": "1.2",
   "main": "main.js",
   "dependencies": {
     "html2canvas": "^1.0.0-alpha.12",

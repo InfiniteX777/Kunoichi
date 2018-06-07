@@ -87,10 +87,10 @@ div#open > div {
 	left: 50%;
 	top: 50%;
 	width: 280px;
-	height: 50%;
-	max-height: 400px;
+	height: 100%;
+	max-height: 320px;
 	background-color: #fff;
-	box-shadow: 0 0 1px #000;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
 	transform: translate(-50%, -50%);
 }
 
@@ -103,6 +103,12 @@ div#open > div > img {
 div#open > div > img:hover {
 	background-color: #fff;
 	box-shadow: 0 0 5px #000;
+}
+
+div#open > div > img:active {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
 }
 
 div#open > div > img.new {
@@ -176,7 +182,7 @@ div#dialog > div {
 	max-width: 360px;
 	padding: 10px;
 	background-color: #fff;
-	box-shadow: 0 0 1px #000;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
 	transform: translate(-50%, -50%);
 	transition: height 0.2s;
 }
@@ -213,11 +219,11 @@ div#dialog > div > table label {
 }
 
 div#dialog > div > table label:hover {
-	box-shadow: 0 0 0 1px #000, 0 0 10px #000;
+	box-shadow: 0 0 5px #000;
 }
 
 div#dialog > div > table label:active {
-	background-color: #dfdfdf;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
 	transition: none;
 }
 
@@ -235,7 +241,7 @@ div#prompt > div {
 	width: 240px;
 	height: 140px;
 	background-color: #fff;
-	box-shadow: 0 0 1px #000;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
 	transform: translate(-50%, -50%);
 	transition: height 0.2s;
 }
@@ -307,12 +313,18 @@ div#prompt > div > img:hover {
 	box-shadow: 0 0 5px #000;
 }
 
-div#prompt > div > img#confirm {
+div#prompt > div > img:active {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
+}
+
+div#prompt > div > img.confirm {
 	position: absolute;
 	left: 50px;
 }
 
-div#prompt > div > img#cancel {
+div#prompt > div > img.cancel {
 	position: absolute;
 	left: 150px;
 }
@@ -353,7 +365,7 @@ div#tooltip {
 	background-color: #000;
 	border-radius: 4px;
 	max-width: 300px;
-	opacity: 0.8;
+	opacity: 0.9;
 	z-index: 4;
 	pointer-events: none;
 }
@@ -362,7 +374,6 @@ div#tooltip label {
 	color: #fff;
 	opacity: 1;
 	font-size: 15px;
-	pointer-events: none;
 }
 
 div#dump {
@@ -525,12 +536,12 @@ div#course img:hover {
 	box-shadow: 0 0 10px #000;
 }
 
-div#course img#load {
+div#course img.load {
 	top: 20px;
 	left: 230px;
 }
 
-div#course img#config {
+div#course img.config {
 	top: 20px;
 	left: 280px;
 }
@@ -544,6 +555,194 @@ div#time {
 	transition: opacity 0.2s;
 	pointer-events: none;
 }
+
+div#config {
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	pointer-events: none;
+	transition: all 0.2s;
+}
+
+div#config > div {
+	top: 50%;
+	left: 50%;
+	width: 320px;
+	height: 100%;
+	max-height: 360px;
+	background-color: #fff;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transform: translate(-50%, -50%);
+}
+
+div#config > div > div {
+	position: relative;
+	width: auto;
+	height: calc(100% - 40px);
+	padding: 20px;
+	overflow-y: auto;
+}
+
+div#config > div > img.close {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+}
+
+div#config > div > div > label {
+	display: inline-block;
+	margin-top: 20px;
+	margin-bottom: 10px;
+	color: #000;
+	vertical-align: center;
+	font-weight: lighter;
+	font-size: 18px;
+}
+
+div#config > div > div > label[small] {
+	font-weight: normal;
+	font-size: 16px;
+}
+
+div#config > div > div > label:first-child {
+	margin-top: 0;
+}
+
+@keyframes bob {
+	50% {
+		transform: scale(1.4, 1.4);
+	}
+	100% {
+	}
+}
+
+div#config > div > div > warn {
+	display: inline-block;
+	vertical-align: top;
+	margin-left: 4px;
+	margin-top: 20px;
+	margin-bottom: 10px;
+	color: #9f0f00;
+	font-weight: bolder;
+	font-size: 12px;
+	-webkit-animation: bob 1s infinite;
+	animation: bob 1s infinite;
+}
+
+div#config > div > div input {
+	display: block;
+	top: 0;
+	width: 100%;
+	padding: 8px;
+	box-shadow: 0 0 1px #000;
+	outline: none;
+	border: none;
+	font-size: 14px;
+	transition: all 0.2s;
+}
+
+div#config > div > div > input:not([lock]):hover {
+	box-shadow: 0 0 5px #000;
+}
+
+div#config > div > div > input[type=text]:focus {
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+}
+
+div#config > div > div > input[type=button] {
+	margin-top: 40px;
+	color: #9f0f00;
+	background-color: #ffdfdf;
+}
+
+div#config > div > div > input[lock] {
+	opacity: 0.4;
+}
+
+div#config > div > div > input[type=button]:not([lock]):active {
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
+}
+
+div#config > div > div > check {
+	display: inline-block;
+	width: 30px;
+	height: 30px;
+	margin-right: 10px;
+	vertical-align: middle;
+	box-shadow: 0 0 1px #000;
+	transition: all 0.2s;
+}
+
+div#config > div > div > check:hover {
+	box-shadow: 0 0 5px #000;
+}
+
+div#config > div > div > check:active {
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
+}
+
+div#config > div > div > check > div {
+	position: relative;
+	display: inline-block;
+	top: 50%;
+	left: 50%;
+	width: 0%;
+	height: 0%;
+	background-color: #3f9f0f;
+	transform: translate(-50%, -50%);
+	transition: width 0.1s, height 0.1s;
+}
+
+div#config > div > div > check[active] > div {
+	width: 60%;
+	height: 60%;
+}
+
+div#config > div > div > dropdown {
+	position: relative;
+	display: block;
+	width: auto;
+	height: 32px;
+	box-shadow: 0 0 1px #000;
+	transition: all 0.2s;
+	overflow-y: hidden;
+}
+
+div#config > div > div > dropdown:hover {
+	box-shadow: 0 0 5px #000;
+}
+
+div#config > div > div > dropdown:focus-within {
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	height: auto;
+}
+
+div#config > div > div > dropdown > input {
+	height: inherit;
+	box-shadow: none;
+}
+
+div#config > div > div > dropdown > div {
+	position: relative;
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 100px;
+	overflow-y: auto;
+}
+
+div#config > div > div > dropdown > div > label {
+	display: block;
+	padding: 8px;
+	font-size: 14px;
+}
+
+div#config > div > div > dropdown > div > label:hover {
+	text-indent: 10px;
+}
+
 
 div#info {
 	position: absolute;
@@ -568,7 +767,7 @@ div#info div {
 	transform: translate(-50%, -50%);
 }
 
-div#info img#enroll {
+div#info img.enroll {
 	position: absolute;
 	display: inline-block;
 	top: 10px;
@@ -584,30 +783,28 @@ div#info img#enroll {
 	transition: all 0.2s;
 }
 
-div#info img#enroll[drop] {
+div#info img.enroll[drop] {
 	background-color: #7f3f3f;
 }
 
-div#info img#enroll[enabled] {
+div#info img.enroll[enabled] {
 	opacity: 1;
 }
 
-div#info img#enroll[enabled]:hover {
+div#info img.enroll[enabled]:hover {
 	box-shadow: 0 0 5px #000;
 }
 
-div#info img#close {
+div#info img.enroll[enabled]:active {
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
+}
+
+div#info img.close {
 	position: absolute;
 	top: 10px;
 	left: calc(100% - 10px);
-	border-radius: 15px;
 	transform: translateX(-100%);
-	transition: box-shadow 0.2s;
-}
-
-div#info img#close:hover {
-	background-color: #fff;
-	box-shadow: 0 0 5px #000;
 }
 
 div#info header {
@@ -891,7 +1088,7 @@ shadow.bottom {
 }
 
 
-img#save {
+img.save {
 	position: absolute;
 	top: 80px;
 	left: 20px;
@@ -903,18 +1100,40 @@ img#save {
 	pointer-events: none;
 }
 
-img#save:hover {
+img.save:hover {
 	background-color: #fff;
 	box-shadow: 0 0 5px #000;
 }
 
-img#cap {
+img.save:active {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
+}
+
+img.cap {
 	position: absolute;
 	top: 100%;
 	left: 100%;
 	width: calc(16/600 * 100vw);
 	max-width: 16px;
 	transform: translate(-100%, -100%);
+}
+
+img.close {
+	border-radius: 15px;
+	transition: box-shadow 0.2s;
+}
+
+img.close:hover {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000;
+}
+
+img.close:active {
+	background-color: #fff;
+	box-shadow: 0 0 5px #000, 0 0 0 1px #000;
+	transition: none;
 }
 
 

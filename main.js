@@ -21,7 +21,7 @@ function newWindow(file) {
 		height: 600,
 		minWidth: 620,
 		minHeight: 450,
-		title: "Kunoichi",
+		title: "New Schedule",
 		show: false,
 		webPreferences: {
 			nodeIntegration: false,
@@ -29,7 +29,8 @@ function newWindow(file) {
 			preload: path.join(__dirname, "assets/js/preload.js")
 		}
 	}, (win) => {
-		file_queue[win.id] = file;
+		if (file)
+			file_queue[win.id] = file;
 
 		win.setMenu(null);
 		win.once("ready-to-show", win.show);
@@ -45,8 +46,8 @@ ipcMain.on("window", (event, file) => newWindow(file));
 */
 ipcMain.on("loaded", (event) => {
 	// Send a -1 if it doesn't need to load anything.
-	if (file_queue[event.sender.id]) {
-		event.returnValue = file_queue[event.sender.id] || -1;
+	if (file_queue[event.sender.id] != null) {
+		event.returnValue = file_queue[event.sender.id];
 
 		delete file_queue[event.sender.id];
 	} else
