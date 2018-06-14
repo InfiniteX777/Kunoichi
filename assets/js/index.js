@@ -1,8 +1,15 @@
-const fs = require("fs");
-const html2canvas = require("html2canvas");
-const {ipcRenderer, remote} = require("electron");
-const mower = remote.require("./assets/js/mower.js");
-const {Menu, MenuItem} = remote;
+// Tricky stuff to see if it's being run by Electron.
+try {
+	require = require;
+
+	var path = require("path");
+	var fs = require("fs");
+	var {ipcRenderer} = require("electron");
+	fs = null;
+} catch(err) {
+	require = null;
+}
+
 // Used to check if there's an unacceptable character for file names.
 const nonfilechar = /[\\/:*?"<>|]/;
 const nonfilechar_warn = "You cant use the following characters:" +
@@ -34,8 +41,6 @@ const schedule_default = {
 	   let the user choose a file to load first.
 	*/
 	AYTerm: null,
-	// Start with null to prompt the user for a name.
-	name: null,
 	// Auto-search on file load. Neat stuff yo.
 	autosearch: true,
 	// Auto-save whenever the user does something important.
@@ -49,6 +54,8 @@ const schedule_default = {
 let lang = "en";
 // A collection of all the messages the system has made via requests.
 let request_elm = {};
+// This is where all of the stuffs get saved.
+let savepath = "/";
 
 
 //-- Elements. --//
@@ -80,6 +87,15 @@ div.course_table = getId("table");
 
 // The time indicator that follows your cursor.
 div.time = getId("time");
+
+// The search button.
+div.search = getId("search");
+div.search_input = div.search.getElementsByTagName("input")[0];
+div.search_img = div.search.getElementsByTagName("img")[0];
+
+// The load button.
+div.load_input = getClass("load")[0];
+div.load_img = getClass("load")[1];
 
 // The config window.
 div.config = getId("config");
@@ -127,7 +143,7 @@ let img = {
 	// The save button. Should only appear once since it auto-saves.
 	save: getClass("save")[0],
 	// Load button. Also functions as a 'new window' button.
-	load: getClass("load")[0],
+	load: getClass("load")[1],
 	config: getClass("config")[0],
 	search: getClass("search")[0]
 };
@@ -139,39 +155,32 @@ let label = {
 	AYTerm: getId("AYTerm")
 };
 
-// The search textbox input.
-let input = getTag("input")[0];
-
 /* The current tooltip's focused element. This is used for when the
    previous element is attempting to clear the tooltip when the
    current tooltip isn't theirs anymore.
 */
 let tooltip;
-/* If this value is more than 0, something is still writing data.
-   Used for the indicator on the screen to tell the users that their
-   schedule is still being saved. This is almost unnecessary
-   since the file writing is incredibly fast.
-*/
-let saveBuffer = 0;
 // The user's schedule. Copy the default schedule.
 let schedule = Object.assign({}, schedule_default);
+// This will be used for auto-saving (desktop only).
+let schedule_path;
 /* Used for the info window. Should be an array; [name, id, state].
    If 'state' has a 'non-false' value, it will enroll the target,
    otherwise it will drop it if it exists in the 'schedule'
    object.
 */
-let enrollTarget;
+let enroll_target;
 // Currently viewed course.
-let courseScope;
+let course_scope;
 // Dumped texts of all the courses for easier searching.
-let courseDump = "";
+let course_dump = "";
 // Separator for each dumped text.
-let courseDumpSep = String.fromCharCode(0);
+let course_dump_sep = String.fromCharCode(0);
 // Phrases used for searching.
-let courseDumpPre =
-		courseDumpSep + "[^" + courseDumpSep + "]*",
-	courseDumpSuf =
-		"[^" + courseDumpSep + "]*";
+let course_dump_pre =
+		course_dump_sep + "[^" + course_dump_sep + "]*",
+	course_dump_suf =
+		"[^" + course_dump_sep + "]*";
 
 
 //-- Essentials. Should not be manually changed. --//
@@ -196,11 +205,434 @@ let drag;
 
 	for (let i in l) {
 		let v = "config\\" + l[i] + "_" + lang + ".json";
-		data[l[i]] = fs.existsSync(v) ?
+		data[l[i]] = fs && fs.existsSync(v) ?
 			JSON.parse(fs.readFileSync(v)) :
 			{};
 	}
 }
+
+
+//-- Data scraping shenanigans. --//
+
+/* Notes about scraped data.
+ * - Each data is categorized by the course's name and AYTerm.
+ * - Each data will hold 'word' and 'table' element.
+ * - Only the currently selected AYTerm will be visible.
+**/
+let scraper = {
+	data: {},
+	AYTerm: null,
+	/**
+	 * Draw the 'word' and 'table' element for the course. This will need
+	 * an entry in the 'scraper.data' already, otherwise it'll cause an
+	 * error.
+	 * @param String name - the name of the course.
+	 * @param String ayterm - the AYTerm associated with the course.
+	 * @param Object slots - the collection of slots of the course.
+	**/
+	draw: (name, ayterm, slots) => {
+		// Add search text box recent list.
+		let entry = scraper.data[ayterm][name];
+		course_dump += course_dump_sep + name;
+
+
+		//-- Create the 'word' element. --//
+
+		entry.word = elem("label");
+		entry.word.innerHTML = "#" + name + " ";
+
+		entry.word.setAttribute("class", "dump");
+		entry.word.addEventListener("mousedown", event => {
+			hit = entry.word;
+
+			if (event.button == 0) {
+				div.search_input.value = name;
+
+				div.dump.insertBefore(entry.word,div.dump.childNodes[0]);
+				search_input();
+			}
+		});
+		div.dump.insertBefore(entry.word, div.dump.childNodes[0]);
+
+
+		//-- Create the 'table' element. --//
+
+		entry.table = elem("table");
+		entry.table.style.display = "none"; // Hide it by default.
+
+		entry.table.setAttribute("class", "course");
+		div.course_table.appendChild(entry.table);
+
+		// Iterate through each slot to setup the table.
+		for (let id in slots) {
+			let slot = slots[id];
+			let tr = elem("tr");
+			let full = slot.enrolled >= slot.cap;
+			let literal = "";
+
+			if (full)
+				// Set to 'full' state to change appearance.
+				tr.setAttribute("full", 1);
+
+			entry.table.appendChild(tr);
+
+
+			// See if the user has enrolled a slot from this course.
+			let v = schedule.list[name];
+
+			if (v && v.id == id) {
+				// Update everything!
+				for (let i in slot) if (i != "tr")
+					v[i] = slot[i];
+
+				// Replace the cards.
+				for (let i in v.cards)
+					div.deck.removeChild(v.cards[i]);
+
+				v.cards = card_new(name, id, v);
+
+				// Replace the summary sidebar entry.
+				div.summary_tbody.removeChild(v.tr);
+				v.tr = summary_new(name, id, v);
+
+				message_new("Updated '" + name + "'.", null, 2);
+			}
+
+
+			// Write down some of the data into the table.
+			function td(label, desc) {
+				let td = elem("td");
+				td.innerHTML = label;
+				literal += label + " ";
+
+				tr.appendChild(td);
+
+				return td;
+			}
+
+			// Section.
+			td(slot.section).setAttribute("bold", 1);
+			// Day/s. Only show 2 characters since it wont fit.
+			let day_str = slot.day.join("");
+			td(day_str.length <= 2 ? day_str : "");
+			// Time.
+			td(
+				parseTime(slot.time[0]) + " - " +
+				parseTime(slot.time[0] + slot.time[1])
+			);
+			// Room.
+			td(slot.room);
+
+			// Store the element, which allows us to manipulate later.
+			slot.tr = tr;
+			// Trim off the extra space at the end.
+			slot.literal = literal.slice(0, -1);
+
+			tr.addEventListener("mouseenter", event => {
+				// Hide the summary sidebar.
+				div.summary.style.transform = "";
+				div.summary.style.boxShadow = "";
+
+				setPreview(name, slot);
+			});
+
+			tr.addEventListener("mouseleave", event => {
+				// Show the summary if has 1 course enrolled.
+				if (Object.values(schedule.list).length) {
+					div.summary.style.transform =
+						"translateX(-100%)";
+					div.summary.style.boxShadow =
+						"0 0 5px #000";
+				}
+
+				setPreview();
+			});
+
+			tr.addEventListener("mousedown", event => {
+				if (event.button == 0)
+					info_show(name, id, slots[id]);
+				else if (event.button == 2)
+					course_add(name, id, slots[id]);
+			});
+		}
+	},
+	/**
+	 * Returns the relevant data in the document returned by
+	 * 'scraper.request()', which is automatically called
+	 * by it.
+	**/
+	dress: doc => {
+		let slots = {};
+		// Get the exact table.
+		let tbody = doc.getElementsByTagName("tbody")[8];
+		// Get the rows.
+		let tr = tbody.getElementsByTagName("tr");
+
+		// See if there are multiple rows. The first row is the header.
+		if (tr.length > 1) {
+			// Mark the previous row for later use.
+			let prev;
+
+			// Get the 'youngest' node and grab its text.
+			function node(v) {
+				if (!v.firstChild ||
+					v.firstChild.nodeName === "#text") {
+					v = v.textContent.match(/[^\n]+/);
+
+					return v != null ? v[0] : "";
+				}
+
+				return node(v.firstChild);
+			}
+
+			/* Iterate through the rows except for the first one. The
+			   first one is the header, which we have no concern of.
+			*/
+			for (let i = 1; i < tr.length; i++) {
+				/* This will contain the data, which we will now call as
+				   slot for consistency.
+				*/
+				let slot = {};
+				// Get each table data.
+				let td = tr[i].getElementsByTagName("td");
+
+				// See if there's more than 1.
+				if (td.length > 1) {
+					// Extract the data from the table.
+					for (let x = 0; x < td.length; x++)
+						scraper.dress_code[x](node(td[x]), slot);
+
+					/* See if there's no ID (This means that this data
+					   is part of another data).
+					*/
+					if (slot.id != null) {
+						// Stamp the date.
+						slot.acquired = new Date();
+						// Add to collection.
+						slots[slot.id] = slot;
+						// Mark as previous.
+						prev = slot;
+					} else if (prev)
+						/* So far, the only relevant data being used here
+						   is the date (IPERSEF has 3 specific dates).
+						*/
+						prev.day = prev.day.concat(slot.day);
+				} else if (prev) {
+					/* Since there's only 1, this is most likely the
+					   professor.
+					*/
+					scraper.dress_code[9](node(td[0]), prev);
+				}
+			}
+		}
+
+		return slots;
+	},
+	/**
+	 * A list of functions used to clean up the scraped data.
+	 * @param Value v - the data being cleaned up.
+	 * @param Object slot - the receiving object.
+	**/
+	dress_code: [
+		// ID 0
+		(v, slot) => {
+			if (v.length > 0) {
+				v = v.match(/\d+/);
+				v = v ? Number(v[0]) : null;
+				slot.id = v;
+			}
+		},
+		// Name 1
+		(v, slot) => {
+			v = v.match(/\S+/);
+			v = v ? v[0] : null;
+			slot.name = v;
+		},
+		// Section 2
+		(v, slot) => {
+			v = v.match(/\S+/g);
+			v = v != null ? v[0] : null;
+			slot.section = v;
+		},
+		// Day 3
+		(v, slot) => {
+			v = v.length > 2 ?
+				[v] : // Courses with a specific date.
+				v.match(/\S/g); // The usual courses.
+			v = v ? v : [];
+			slot.day = v;
+		},
+		// Time 4
+		(v, slot) => {
+			v = v.match(/\d+/g);
+			v = v ? v : [];
+
+			// Parse the time.
+			for (let i in v) {
+				v[i] = Number(v[i].substr(0, 2))*60 +
+					Number(v[i].slice(-2));
+
+				if (v[i] < 0)
+					v[i] = 0;
+
+				if (i > 0)
+					v[1] -= v[0];
+			}
+
+			slot.time = v;
+		},
+		// Room 5
+		(v, slot) => slot.room = v,
+		// Cap 6
+		(v, slot) => {
+			v = Number(v);
+			v = v != null ? v : null;
+			slot.cap = v;
+		},
+		// Enrolled 7
+		(v, slot) => {
+			v = Number(v);
+			v = v != null ? v : null;
+			slot.enrolled = v;
+		},
+		// Remarks 8
+		(v, slot) => slot.remarks = v,
+		// Professor 9
+		(v, slot) => {
+			if (v)
+				// Get rid of extra spaces.
+				slot.professor = v.match(/\S+/g).join(" ");
+		}
+	],
+	/**
+	 * Request the specified data from DLSU. Each request will update
+	 * the AYTerm. If 'name' is empty or is 'AYTERM', it will only
+	 * request for the AYTerm. The academic year and term will be return
+	 * through the 'AYTERM' channel via 'scraper.once()'.
+	 * I'm not taking any credits here, just so we're clear.
+	 * @param String name - the name of the course.
+	 * @param String ayterm - if supplied, it will return the value
+	 * that matches with the ayterm.
+	 * @param Function callback - will be fired upon data retrieval.
+	**/
+	request: (name, ayterm, callback) => {
+		// Make a dummy callback if not supplied.
+		callback = callback || function() {};
+		// Supply the ayterm if null.
+		ayterm = ayterm || scraper.AYTerm;
+
+		let xml = new XMLHttpRequest();
+		xml.responseType = "document";
+
+		xml.onreadystatechange = function() {
+			if (this.readyState == 4 && this.status == 200) {
+				// Get for the AYTerm.
+				let v = this.response.getElementsByClassName(
+					"content_title"
+				)[0].innerText.match(/[^\n]+/);
+				v = v ? v[0] : "";
+
+				// Update the AYTerm.
+				scraper.AYTerm = v;
+
+				// See if user only needs the AYTerm.
+				if (name === "AYTERM")
+					callback(v);
+				else if (ayterm && ayterm !== v) {
+					// AYTerm doesn't match. Return a cached data.
+					callback(
+						scraper.data[ayterm] &&
+						scraper.data[ayterm][name] || {}
+					);
+				} else {
+					// Scrape some data.
+					let slots;
+
+					// Create the entry for the current AYTerm.
+					if (!scraper.data[v])
+						scraper.data[v] = {};
+
+					// Try to retrieve any data.
+					slots = scraper.dress(this.response);
+
+					if (typeof(slots) === "object" &&
+						Object.values(slots).length) {
+						// Record the data.
+						scraper.data[v][name] = {
+							slots: slots
+						};
+
+						// Draw the elements.
+						scraper.draw(name, v, slots);
+						// Re-check the input just incase.
+						search_input();
+					}
+
+					// Return the data.
+					callback(slots);
+				}
+			} else if (this.status != 0 && this.status != 200)
+				// Something bad happened!
+				callback(-2);
+		}
+
+		// See if there's a name to search for.
+		if (name && name !== "AYTERM") {
+			// Search for the course.
+			name = name.toUpperCase(); // Make sure it's all caps.
+
+			// See if there's anything cached.
+			if (scraper.data[ayterm] && scraper.data[ayterm][name])
+				return callback(scraper.data[ayterm][name]);
+
+			/* See if ayterm is supplied and it matches with the current
+			   AYTerm. Still search if current AYTerm is unknown.
+			*/
+			if (ayterm === scraper.AYTerm || !scraper.AYTerm)
+				xml.open(
+					"GET",
+					"http://enroll.dlsu.edu.ph/dlsu/view_actual_count?" +
+					"p_course_code=" + name
+				);
+			else if (fs) {
+				// We can still get things in the user's cache.
+				let slots = "cache\\" + ayterm + "\\" + name + ".json";
+
+				if (fs.existsSync(slots)) try {
+					slots = JSON.parse(fs.readFileSync(slots));
+
+					if (!scraper.data[ayterm])
+						scraper.data[ayterm] = {};
+
+					scraper.data[ayterm][name] = {
+						slots: slots
+					};
+
+					scraper.draw(name, ayterm, slots);
+
+					return callback(slots);
+				} catch(err) {
+					// Return nothing :(
+					return callback({});
+				}
+			} else
+				// Return nothing :(
+				return callback({});
+		} else if (!scraper.ayterm) {
+			// Get the current academic year and term.
+			name = "AYTERM";
+
+			xml.open(
+				"GET",
+				"http://enroll.dlsu.edu.ph/dlsu/view_actual_count"
+			);
+		} else
+			// Current AYTerm is already known. Return that instead.
+			return callback(scraper.ayterm);
+
+		xml.send();
+	}
+};
 
 
 //-- Miscellaneous functions. --//
@@ -215,7 +647,6 @@ function isdir(source) {
 // spook them
 const spook_list = [
 	"There's nothing here.",
-	"And God said, 'Let there be light.'",
 	"It's cold in here.",
 	"Feed me.",
 	"I-It's not like I'm helping you or anything!",
@@ -255,7 +686,7 @@ function setSpook(flag) {
  * @return [Object, Function] - Returns an array with the element
  * and a function which will remove the message when fired.
 **/
-function sendMessage(str, callback, lifetime, type) {
+function message_new(str, callback, lifetime, type) {
 	let tick = 0;
 	let elm = elem("label");
 	elm.innerHTML = str;
@@ -383,33 +814,24 @@ function parseTime(v) {
 
 //-- Academic year and term request. --//
 
-label.AYTerm.addEventListener("mouseenter", () => {
-	label.AYTerm.style.opacity = 1;
-	label.AYTerm.style.fontSize = "24px";
-});
-
-label.AYTerm.addEventListener("mouseleave", () => {
-	label.AYTerm.style.opacity = null;
-	label.AYTerm.style.fontSize = null;
-});
-
 // Make sure that the file has yet to have its AYTerm set.
 if (schedule.AYTerm) {
 	label.AYTerm.innerHTML = schedule.AYTerm;
 
 	config_AYTerm(schedule.AYTerm);
-} else if (mower.AYTerm) {
+} else if (scraper.AYTerm) {
 	// Set current AYTerm with the latest.
-	schedule.AYTerm = mower.AYTerm;
-	label.AYTerm.innerHTML = mower.AYTerm;
-	div.config_input[1].value = mower.AYTerm;
+	schedule.AYTerm = scraper.AYTerm;
+	label.AYTerm.innerHTML = scraper.AYTerm;
+	div.config_input[0].value = scraper.AYTerm;
 
-	config_AYTerm(mower.AYTerm);
+	config_AYTerm(scraper.AYTerm);
 } else {
 	/* Try to request for current academic year and term.
 	   Otherwise, make use of the offline cache.
 	*/
-	let v = fs.existsSync("cache") && fs.readdirSync("cache").filter(
+	let v = fs && fs.existsSync("cache") &&
+			fs.readdirSync("cache").filter(
 		name => isdir("cache" + "\\" + name)
 	);
 
@@ -420,74 +842,18 @@ if (schedule.AYTerm) {
 		label.AYTerm.innerHTML = v;
 	}
 
-	// Set AYTerm as soon as data is received.
-	mower.once("_AYTERM", arg => {
-		schedule.AYTerm = arg;
-		label.AYTerm.innerHTML = arg;
-		div.config_input[1].value = arg;
+	// Make a request for AYTerm.
+	scraper.request(null, null, (ayterm) => {
+		schedule.AYTerm = ayterm;
+		label.AYTerm.innerHTML = ayterm;
+		div.config_input[0].value = ayterm;
 
-		config_AYTerm(arg);
-	});
-	mower.requestAYTerm(); // Make a request.
-}
-
-
-//-- File saving. --//
-
-function saveData() {
-	// Make it asynchronous.
-	setTimeout(() => {
-		saveBuffer += 1;
-
-		// Copy the schedule.
-		let data = Object.assign({}, schedule);
-
-		// Update internal record for modification date.
-		data.modified = new Date();
-
-		// Get rid of the list since its directly pointing to real data.
-		data.list = {};
-
-		// Get the list manually.
-		for (let name in schedule.list) {
-			data.list[name] = Object.assign({}, schedule.list[name]);
-
-			// Delete unncessary data.
-			delete data.list[name].cards;
-			delete data.list[name].tr;
-			delete data.list[name].literal;
-		}
-
-		data = JSON.stringify(data, null, "	");
-
-		if (!fs.existsSync("save"))
-			fs.mkdirSync("save");
-
-		fs.writeFile(
-			"save\\" + schedule.name + ".json",
-			data,
-			() => {
-				saveBuffer -= 1;
-
-				sendMessage("File saved.", null, 2);
-			}
-		);
+		config_AYTerm(ayterm);
 	});
 }
 
-/**
- * Properly assess if the application should reveal the save button or
- * just auto-save it.
-**/
-function doSave() {
-	if (!schedule.name || !schedule.autosave) {
-		// Show the holy button of justice.
-		img.save.style.opacity = 1;
-		img.save.style.pointerEvents = "auto";
-	} else
-		// The user is no fun. Just auto-save it.
-		saveData();
-}
+
+//-- Prompt window. --//
 
 function prompt_show() {
 	// Look for a suitable name for that wonderful schedule they got.
@@ -514,16 +880,23 @@ function prompt_show() {
 }
 
 function prompt_save_func(filename) {
-	schedule.name = filename;
+	schedule_path = location.pathname;
+	schedule_path = schedule_path.slice(
+		1,
+		-path.basename(schedule_path).length
+	) + "save/" + filename + ".json";
 
 	prompt_hide();
+
+	// Make the directory.
+	if (!fs.existsSync("save"))
+		fs.mkdirSync("save");
 
 	// Add the creation date stamp.
 	schedule.created = new Date();
 
-	ipcRenderer.send("title", filename); // Rename the window.
-	saveData();
-	sendMessage("Schedule will now automatically save.", null, 3);
+	file_save();
+	message_new("Schedule will now automatically save.", null, 3);
 
 	// Hide the save button.
 	img.save.style.opacity = "";
@@ -549,17 +922,7 @@ function prompt_save() {
 		prompt_save_func(filename);
 }
 
-img.save.addEventListener("click", event => {
-	// See if it's already saved.
-	if (schedule.name) {
-		saveData();
-
-		// Hide it again.
-		img.save.style.opacity = "";
-		img.save.style.pointerEvents = "";
-	} else
-		prompt_show();
-});
+img.save.addEventListener("click", file_save);
 
 tooltipListener(
 	img.save,
@@ -574,7 +937,7 @@ div.prompt_input.addEventListener("input", event => {
 	if (nonfilechar.test(event.data)) {
 		div.prompt_input.value = div.prompt_input.value.slice(0, -1);
 
-		sendMessage(
+		message_new(
 			nonfilechar_warn,
 			null,
 			2
@@ -619,11 +982,55 @@ tooltipListener(
 //-- Schedule functions. --//
 
 /**
- * Load a saved schedule. This will also update the schedule. This can also
- * be used for loading a blank schedule to reset everything to default.
+ * Parse the schedule's raw data.
+ * @param String txt - the raw data.
+**/
+function sched_parse(txt) { try {
+	let sched = JSON.parse(txt);
+	let list = sched.list;
+
+	// Check if there's anything wrong before doing something.
+	if (!list)
+		throw null;
+
+	// // Find out the name without the extension.
+	// let ext = name.match(/\./g);
+
+	// // See if there's at least 1 dot.
+	// if (ext && ext.length)
+	// 	// Get rid of the right-most dot.
+	// 	sched.name = name.slice(
+	// 		0,
+	// 		-name.match(/\.[^\.]+$/)[0].length
+	// 	);
+	// else
+	// 	// Just take the name as is.
+	// 	sched.name = name;
+
+	for (let i in list)
+		if (!list[i].day || !list[i].time)
+			// Get rid of faulty data.
+			delete list[i];
+		else
+			// Formalize data.
+			list[i].literal = list[i].section + " " +
+				list[i].day.join("") + " " +
+				parseTime(list[i].time[0]) + " - " +
+				parseTime(list[i].time[0] + list[i].time[1]) +
+				" " + list[i].room;
+
+	return sched;
+} catch(err) {} }
+
+/**
+ * Load a saved schedule. This will also update the schedule. This can
+ * also be used for loading a blank schedule to reset everything to
+ * default.
  * @param Object sched - the schedule.
 **/
-function loadSchedule(sched) {
+function sched_load(sched, path) {
+	if (!sched) return; // No bamboozling pls.
+
 	// Get rid of the previous schedule.
 	for (let name in schedule.list) {
 		// Remove summary sidebar elements.
@@ -641,12 +1048,12 @@ function loadSchedule(sched) {
 
 	for (let name in list) {
 		let slot = list[name];
-		slot.cards = newCard(name, slot.id, slot);
-		slot.tr = newSummary(name, slot.id, slot);
+		slot.cards = card_new(name, slot.id, slot);
+		slot.tr = summary_new(name, slot.id, slot);
 
 		// Try to request for them if allowed.
 		if (sched.autosearch)
-			ipcRenderer.send("request", name, sched.AYTerm);
+			scraper.request(name, sched.AYTerm);
 
 		// Measure the scroll boundaries.
 		if (scroll_min != null)
@@ -670,12 +1077,10 @@ function loadSchedule(sched) {
 
 	// Replace.
 	schedule = sched;
+	label.AYTerm.innerHTML = sched.AYTerm;
 
 	// Adapt configuration window.
-	div.config_input[0].value = sched.name;
-	div.config_input[1].value = sched.AYTerm;
-
-	div.config_input[2].removeAttribute("lock");
+	div.config_input[0].value = sched.AYTerm;
 
 	if (sched.autosearch)
 		div.config_check[0].setAttribute("active", 1);
@@ -687,140 +1092,52 @@ function loadSchedule(sched) {
 	else
 		div.config_check[1].removeAttribute("active");
 
-	if (sched.name)
-		div.config_input[2].removeAttribute("lock");
-	else
-		div.config_input[2].setAttribute("lock", 1);
-
-	// Rename the window.
-	ipcRenderer.send(
-		"title",
-		sched.name || "New Schedule"
-	);
-
 	// Message user.
-	if (sched.name)
-		sendMessage("Loaded '" + sched.name + "'.", null, 2);
+	if (path) {
+		// Get the name.
+		let i = path.match(/.+\\/)[0].length;
+
+		message_new("Loaded '" + sched.name + "'.", null, 2);
+	}
 
 	scrollTo(0); // Scroll to top.
 }
 
-/**
- * See if this file does exist, can be parsed with JSON, and has the
- * necessary attributes of a schedule.
- * @param String name - the full path to the schedule (including its name).
- * If path doesn't start from the drive, it will start from the .exe's
- * location.
- * @return Object - Returns the schedule if it is,
- * otherwise 'null'.
-**/
-function getSched(filepath) {
-	try {
-		let sched = JSON.parse(fs.readFileSync(filepath));
-		let list = sched.list;
 
-		// Check if there's anything wrong before doing something.
-		if (!list)
-			throw null;
+//-- Load button. --//
 
-		// Get the name.
-		sched.name = filepath.match(/\\.+$/)[0].slice(1, -5);
-
-		for (let i in list)
-			if (!list[i].day || !list[i].time)
-				// Get rid of faulty data.
-				delete list[i];
-			else
-				// Formalize data.
-				list[i].literal = list[i].section + " " +
-					list[i].day.join("") + " " +
-					parseTime(list[i].time[0]) + " - " +
-					parseTime(list[i].time[0] + list[i].time[1]) + " " +
-					list[i].room;
-
-		// All good. Return the schedule.
-		return sched;
-	} catch (err) { }
-}
-
-/**
- * Show yer treasures, me hearty!
-**/
-function showSchedBrowser() {
-	// Clear the previous stuff.
-	div.open_listbox.innerHTML = "";
-
-	// Draw the schedules first before showing it.
-	let l = fs.existsSync("save") && fs.readdirSync("save").filter(name =>
-		// Not a folder.
-		!isdir("save\\" + name) &&
-		// Must have a '.json'.
-		name.toLowerCase().match(/\.[^\.]+$/) == ".json"
-	).sort((a, b) =>
-		// Sort by last modified.
-		fs.lstatSync("save\\" + b).mtimeMs -
-		fs.lstatSync("save\\" + a).mtimeMs
-	);
-
-	if (l) for (let i in l) {
-		let file = "save\\" + l[i];
-		let name = l[i].slice(0, -5);
-		let sched = getSched(file);
-
-		if (sched) {
-			let stat = fs.lstatSync(file);
-			let d = stat.mtime.toLocaleDateString(); // Modified.
-			let label = elem("label");
-			label.innerHTML = name + "<br><label>" + sched.AYTerm +
-				"</label><label right>" + d + "</label>";
-
-			label.addEventListener("click", event => {
-				div.open.style.pointerEvents = "";
-				div.open.style.opacity = "";
-
-				loadSchedule(sched);
-			});
-
-			label.addEventListener("mouseup", event => {
-				if (event.button == 2) {
-					div.open.style.pointerEvents = "";
-					div.open.style.opacity = "";
-
-					ipcRenderer.send("window", file);
-				}
-			});
-
-			div.open_listbox.appendChild(label);
-		} else sendMessage(
-			"Can't load '" + name + "'.<br>It's probably corrupted :(" +
-			"<br><br>You can still find the file in the 'save' directory.",
-			null,
-			3,
-			2
-		);
+div.load_input.addEventListener("change", event => file_load(
+	event.target.files[0],
+	sched => {
+		if (sched)
+			sched_load(sched);
+		else
+			message_new(
+				"We can't seem to load that file, sorry!",
+				null,
+				2,
+				2
+			);
 	}
+));
 
-	div.open.style.pointerEvents = "auto";
-	div.open.style.opacity = 1;
-}
-
-// Load button.
-img.load.addEventListener("mousedown", event => {
+div.load_img.addEventListener("mousedown", event => {
+	// Redirect the img to the input.
 	if (event.button == 0)
-		showSchedBrowser();
+		div.load_input.click();
 });
 
 tooltipListener(
-	img.load,
+	div.load_img,
 	"<label>Open/New Schedule</label>",
 	null,
 	1
 );
 
 // New window button.
-div.open_img[0].addEventListener("click", event => {
-	ipcRenderer.send("window");
-});
+div.open_img[0].addEventListener("click", event =>
+	ipcRenderer.send("window")
+);
 
 tooltipListener(div.open_img[0], "<label>New Window</label>", null, 1);
 
@@ -1022,7 +1339,7 @@ function tooltipListener(elm, value, cond, flag) {
 }
 
 
-//-- Functions for pseudo-enrolling. --//
+//-- Course functions. --//
 
 /**
  * Attempt to add the slot to the schedule. This will do nothing
@@ -1032,7 +1349,7 @@ function tooltipListener(elm, value, cond, flag) {
  * @param Object slot - the slot's data.
  * the card if successfully added to schedule.
 **/
-function courseEnroll(name, id, slot) {
+function course_add(name, id, slot) {
 	if (!hasConflict(name, slot)) {
 		setSpook(1); // lolol
 
@@ -1044,9 +1361,9 @@ function courseEnroll(name, id, slot) {
 			id: id
 		}, slot);
 		// Create the cards.
-		schedule.list[name].cards = newCard(name, id, slot);
+		schedule.list[name].cards = card_new(name, id, slot);
 		// Create the summary sidebar entry.
-		schedule.list[name].tr = newSummary(name, id, slot);
+		schedule.list[name].tr = summary_new(name, id, slot);
 
 		// Scroll to the card's location.
 		scrollTo(
@@ -1056,13 +1373,13 @@ function courseEnroll(name, id, slot) {
 		);
 
 		// Save it.
-		doSave();
+		file_save_check();
 
 		return true; // Sucessfully added to schedule.
 	}
 }
 
-function courseDrop(name) {
+function course_rem(name) {
 	let slot = schedule.list[name];
 
 	if (slot) {
@@ -1116,7 +1433,7 @@ function courseDrop(name) {
 		}
 
 		// Save it.
-		doSave();
+		file_save_check();
 
 		return true; // Successfully removed from schedule.
 	}
@@ -1131,8 +1448,8 @@ function courseDrop(name) {
  * @param Integer id - the slot's ID.
  * @param Object slot - The slot's data.
 **/
-function showInfo(name, id, slot) {
-	enrollTarget = [name, id, slot, !hasConflict(name, slot)];
+function info_show(name, id, slot) {
+	enroll_target = [name, id, slot, !hasConflict(name, slot)];
 	div.info_header.innerHTML = name;
 	div.info_subtitle.innerHTML = data.course[name] || "";
 
@@ -1178,7 +1495,7 @@ function showInfo(name, id, slot) {
 		div.info_img[1].removeAttribute("drop");
 
 		// Check if there are no conflicts.
-		if (enrollTarget[3])
+		if (enroll_target[3])
 			// Can enroll. Enable it.
 			div.info_img[1].setAttribute("enabled", 1);
 		else
@@ -1192,7 +1509,7 @@ function showInfo(name, id, slot) {
 
 // Close function.
 function info_close() {
-	enrollTarget = null;
+	enroll_target = null;
 	div.info.style.opacity = 0;
 	div.info.style.pointerEvents = "";
 }
@@ -1208,31 +1525,31 @@ info.getElementsByTagName("dim")[0]
 // Enroll/Drop button.
 div.info_img[1].addEventListener("click", () => {
 	// Make sure there is an actual target.
-	if (enrollTarget)
+	if (enroll_target)
 		// See if the user is trying to enroll.
-		if (enrollTarget[3]) {
+		if (enroll_target[3]) {
 			// User is attempting to enroll.
-			if (courseEnroll(
-				enrollTarget[0],
-				enrollTarget[1],
-				enrollTarget[2]
+			if (course_add(
+				enroll_target[0],
+				enroll_target[1],
+				enroll_target[2]
 			)) {
 				div.info_img[1].setAttribute("src", "assets/img/drop.png");
 				div.info_img[1].setAttribute("drop", 1);
 
-				enrollTarget[3] = !enrollTarget[3]; // Flip.
+				enroll_target[3] = !enroll_target[3]; // Flip.
 			}
-		} else if (schedule.list[enrollTarget[0]] &&
-				schedule.list[enrollTarget[0]].id == enrollTarget[1]) {
+		} else if (schedule.list[enroll_target[0]] &&
+				schedule.list[enroll_target[0]].id == enroll_target[1]) {
 			// User wants to drop the target. Check if the same id.
-			if (courseDrop(enrollTarget[0])) {
+			if (course_rem(enroll_target[0])) {
 				div.info_img[1].setAttribute(
 					"src",
 					"assets/img/enroll.png"
 				);
 				div.info_img[1].removeAttribute("drop");
 
-				enrollTarget[3] = !enrollTarget[3]; // Flip.
+				enroll_target[3] = !enroll_target[3]; // Flip.
 			}
 		}
 });
@@ -1275,7 +1592,7 @@ tooltipListener(div.info_img[1],
  * @param Object slot - The data of the slot.
  * @return Object - The element that was added in the sidebar.
 **/
-function newSummary(name, id, slot) {
+function summary_new(name, id, slot) {
 	// Set up the entry for the summary sidebar.
 	let tr = elem("tr");
 	let l = [id, name, slot.section, slot.room];
@@ -1289,7 +1606,7 @@ function newSummary(name, id, slot) {
 
 	tr.addEventListener("mousedown", event => {
 		if (event.button == 0)
-			showInfo(name, id, slot);
+			info_show(name, id, slot);
 	});
 
 	div.summary_tbody.appendChild(tr);
@@ -1305,7 +1622,7 @@ function newSummary(name, id, slot) {
  * @param Object slot - The data of the slot.
  * @return Array[Object] - All the cards that were created.
 **/
-function newCard(name, id, slot) {
+function card_new(name, id, slot) {
 	let y = slot.time[0]/60,
 		h = slot.time[1]/60;
 	let t1 = ("00" + Math.trunc(slot.time[0]/60)).slice(-2) + ":" +
@@ -1362,7 +1679,7 @@ function newCard(name, id, slot) {
 
 			card.addEventListener(
 				"click",
-				event => showInfo(name, id, slot)
+				event => info_show(name, id, slot)
 			);
 
 			card.addEventListener("mouseenter", event => {
@@ -1409,15 +1726,15 @@ function newCard(name, id, slot) {
  * On search input. Also used to update the course slots view, along
  * with the recently-searched-courses view.
 **/
-function oninput() {
-	let list = data[schedule.AYTerm];
+function search_input() {
+	let list = scraper.data[schedule.AYTerm];
 
-	// It's completely empty. Nothing to filter.
+	// It's completely empty. Nothing to filter. No need to continue.
 	if (!list)
 		return;
 
 	// Separate the input from the spaces.
-	let txt = input.value.toUpperCase().match(/\S+/g) || [""];
+	let txt = div.search_input.value.toUpperCase().match(/\S+/g) || [""];
 
 	// Check if the user is trying to check via slot ID.
 	if (!isNaN(Number(txt[0]))) for (let name in list)
@@ -1426,8 +1743,8 @@ function oninput() {
 			txt = [name, txt[0]];
 
 			// Hide any tables if the slot is from another course.
-			if (courseScope && courseScope[0] != name)
-				list[courseScope[0]].table.style.display = "none";
+			if (course_scope && course_scope[0] != name)
+				list[course_scope[0]].table.style.display = "none";
 
 			break;
 		}
@@ -1437,15 +1754,15 @@ function oninput() {
 		// Found a match in the searched courses.
 		let slots = list[txt[0]].slots;
 
-		if (!courseScope || courseScope[0] != txt[0])
+		if (!course_scope || course_scope[0] != txt[0])
 			// Make the table visible when the names match.
 			list[txt[0]].table.style.display = "";
 
 		/* See if the user is trying to filter out the slots. Also
 		   only update if there is a difference from before.
 		*/
-		if (!courseScope ||
-			courseScope.toString() != txt.toString()) {
+		if (!course_scope ||
+			course_scope.toString() != txt.toString()) {
 			// This will help reduce lag by minimizing the effort.
 			if (txt.length > 1) {
 				let id;
@@ -1495,7 +1812,7 @@ function oninput() {
 		}
 
 		div.dump.style.display = "none";
-		courseScope = txt;
+		course_scope = txt;
 
 		return;
 	}
@@ -1503,26 +1820,26 @@ function oninput() {
 	  'recently-searched' view.
 	*/
 
-	if (courseScope) {
+	if (course_scope) {
 		// Hide the course view if visible.
-		list[courseScope[0]].table.style.display = "none";
+		list[course_scope[0]].table.style.display = "none";
 
-		courseScope = null;
+		course_scope = null;
 	}
 
 	// Make 'recently-searched' view visible.
 	div.dump.style.display = "block";
 
-	/* Find matches in the 'courseDump', which is just a long
+	/* Find matches in the 'course_dump', which is just a long
 	   string containing all the searched course names.
 	*/
-	let res = courseDump.match(
-		new RegExp(courseDumpPre + txt[0] + courseDumpSuf, "g")
+	let res = course_dump.match(
+		new RegExp(course_dump_pre + txt[0] + course_dump_suf, "g")
 	);
 
 	for (let name in list) {
 		if (res !== null &&
-			res.indexOf(courseDumpSep + name) > -1) {
+			res.indexOf(course_dump_sep + name) > -1) {
 			// Found a match. Make it visible.
 
 			if (list[name].word.style.display)
@@ -1533,48 +1850,32 @@ function oninput() {
 	}
 }
 
-/**
- * Course creation.
-**/
-ipcRenderer.on("request", (event, name, slots) => {
-	// Make an entry for AYTerm if first time.
-	if (!data[schedule.AYTerm])
-		data[schedule.AYTerm] = {};
-
-	let entry = data[schedule.AYTerm][name];
-
+function course_store(name, slots) {
 	// Make sure there's actually something to receive.
 	if (typeof(slots) !== "number" && Object.values(slots).length) {
-		// Get rid of the previous data.
-		if (entry) {
-			div.dump.removeChild(entry.word);
-			div.course_table.removeChild(entry.table);
-		}
-
 		// Add search text box recent list.
-		courseDump += courseDumpSep + name;
+		course_dump += course_dump_sep + name;
 
 		// Create the 'word' that auto-completes the search textbox.
 		let word = elem("label");
 		word.innerHTML = "#" + name + " ";
 
 		word.setAttribute("class", "dump");
-
 		word.addEventListener("mousedown", event => {
 			hit = word;
 
 			if (event.button == 0) {
-				input.value = name;
+				div.search_input.value = name;
 
 				div.dump.insertBefore(word, div.dump.childNodes[0]);
-				oninput();
+				search_input();
 			}
 		});
 
 
 		//-- Store data. --//
 
-		data[schedule.AYTerm][name] = {
+		scraper.data[schedule.AYTerm][name] = {
 			/* The element that will be appended to the
 			   recently-searched view.
 			*/
@@ -1583,7 +1884,7 @@ ipcRenderer.on("request", (event, name, slots) => {
 			table: elem("table"),
 			slots: slots
 		};
-		entry = data[schedule.AYTerm][name];
+		entry = scraper.data[schedule.AYTerm][name];
 
 		// Hide the table by default.
 		entry.table.style.display = "none";
@@ -1619,13 +1920,13 @@ ipcRenderer.on("request", (event, name, slots) => {
 				for (let i in v.cards)
 					div.deck.removeChild(v.cards[i]);
 
-				v.cards = newCard(name, id, v);
+				v.cards = card_new(name, id, v);
 
 				// Replace the summary sidebar entry.
 				div.summary_tbody.removeChild(v.tr);
-				v.tr = newSummary(name, id, v);
+				v.tr = summary_new(name, id, v);
 
-				sendMessage("Updated '" + name + "'.", null, 2);
+				message_new("Updated '" + name + "'.", null, 2);
 			}
 
 
@@ -1680,33 +1981,34 @@ ipcRenderer.on("request", (event, name, slots) => {
 
 			tr.addEventListener("mousedown", event => {
 				if (event.button == 0)
-					showInfo(name, id, slots[id]);
+					info_show(name, id, slots[id]);
 				else if (event.button == 2)
-					courseEnroll(name, id, slots[id]);
+					course_add(name, id, slots[id]);
 			});
 		}
 
 		// Send a message to the user.
 		if (request_elm[name])
-			sendMessage(
+			message_new(
 				"'" + name + "' data received.", null, 2
 			);
 	} else if (request_elm[name])
 		if (slots == -3)
-			sendMessage(
-				"No slots were being offered for '" + name + "'.",
+			message_new(
+				"No slots were being offered for '" + name + "'. in " +
+				"that academic year and term.",
 				null,
 				2
 			);
 		else if (slots == -1)
-			sendMessage(
+			message_new(
 				"Request timed out for '" + name + "'.<br><br>" +
 				"Maybe try again later?",
 				null,
 				2
 			);
 		else
-			sendMessage(
+			message_new(
 				"Could not receive data for '" + name + "'.", null, 2
 			);
 
@@ -1722,17 +2024,17 @@ ipcRenderer.on("request", (event, name, slots) => {
 		div.dump.insertBefore(entry.word, div.dump.childNodes[0]);
 
 		// Re-show the table if it was selected before.
-		if (courseScope && courseScope[0] == name)
+		if (course_scope && course_scope[0] == name)
 			entry.table.style.display = "";
 
-		oninput();
+		search_input();
 	}
-});
+}
 
 
 //-- Search button. --//
 
-input.addEventListener("focus", event => {
+div.search_input.addEventListener("focus", event => {
 	div.course.style.opacity = 1;
 	div.course.style.pointerEvents = "auto";
 	label.spooky.style.opacity = 0;
@@ -1761,7 +2063,7 @@ input.addEventListener("focus", event => {
 	}
 });
 
-input.addEventListener("focusout", event => {
+div.search_input.addEventListener("focusout", event => {
 	if (hit) {
 		/* This is to re-focus on the search textbox again.
 		   Since the focus is lost when clicking outside the
@@ -1770,7 +2072,7 @@ input.addEventListener("focusout", event => {
 		*/
 		hit = null;
 
-		input.focus(); // Persist focus.
+		div.search_input.focus(); // Persist focus.
 	} else {
 		div.course.style.opacity = 0;
 		div.course.style.pointerEvents = "";
@@ -1784,23 +2086,39 @@ input.addEventListener("focusout", event => {
 	}
 });
 
-input.addEventListener("input", oninput);
+div.search_input.addEventListener("input", search_input);
 
-input.addEventListener("keyup", event => {
-	let val = input.value.toUpperCase();
+div.search_input.addEventListener("keyup", event => {
+	let name = div.search_input.value.toUpperCase();
 
 	if (event.key === "Enter" &&
 		schedule.AYTerm && // Do not request if AYTerm isn't set.
-		val.length > 0 && // Must have an entry.
-		val.search(/\s/) == -1) { // No spaces.
+		name.length > 0 && // Must have an entry.
+		name.search(/\s/) == -1) { // No spaces.
 
-		ipcRenderer.send("request", val, schedule.AYTerm);
+		let msg = message_new(
+			"Requesting data for '" + name + "'...",
+			() => {} // Disable 'click on close'.
+		);
 
-		if (!request_elm[val])
-			request_elm[val] = sendMessage(
-				"Requesting data for '" + val + "'...",
-				() => {} // Disable 'click on close'.
-			);
+		scraper.request(name, schedule.AYTerm, slots => {
+			msg[1]();
+
+			if (typeof(slots) === "object")
+				if (Object.values(slots).length)
+					message_new("'" + name + "' data received.", null, 2);
+				else
+					message_new(
+						"No slots were being offered for '" + name + "' " +
+						"in '" + schedule.AYTerm + "'.",
+						null,
+						2
+					);
+			else if (slots == -1)
+				message_new(
+					"Could not receive data for '" + name + "'.", null, 2
+				);
+		});
 	}
 });
 
@@ -1808,15 +2126,13 @@ img.search.addEventListener("mousedown", event => {
 	hit = img.search;
 
 	if (event.button == 0) {
-		input.value = "";
-		oninput();
+		div.search_input.value = "";
+
+		search_input();
 	}
 });
 
-tooltipListener(
-	img.search,
-	"<label>Clear</label>"
-);
+tooltipListener(img.search, "<label>Clear</label>");
 
 
 //-- Configuration window. --//
@@ -1831,7 +2147,8 @@ function config_AYTerm(txt) {
 		if (div.config_dropdown.innerHTML.search(txt) == -1)
 			div.config_dropdown.innerHTML += "<label>" + txt + "</label>";
 	} else {
-		let v = fs.existsSync("cache") && fs.readdirSync("cache").filter(
+		let v = fs && fs.existsSync("cache") &&
+				fs.readdirSync("cache").filter(
 			name => isdir("cache" + "\\" + name)
 		);
 
@@ -1857,7 +2174,7 @@ function config_close() {
  * from.
  * @return Object - the 'dropdown' element.
 **/
-function setDropdown(dropdown, options) {
+function dropdown_set(dropdown, options) {
 	let dropdown_div; // Container for the options.
 	let input; // The input.
 
@@ -1942,7 +2259,7 @@ function setDropdown(dropdown, options) {
 	let dropdowns = getTag("dropdown");
 
 	for (let i = 0; i < dropdowns.length; i++)
-		setDropdown(dropdowns[i]);
+		dropdown_set(dropdowns[i]);
 
 	// Add all AYTerm from cache.
 	config_AYTerm();
@@ -1955,107 +2272,23 @@ img.config.addEventListener("mousedown", event => {
 	}
 });
 
-// Schedule name.
-{
-	div.config_input[0].addEventListener("keydown", event => {
-		if (event.key === "Enter")
-			div.config_input[0].blur();
-	});
-
-	div.config_input[0].addEventListener("input", event => {
-		if (nonfilechar.test(event.data)) {
-			div.config_input[0].value = div.config_input[0].value
-				.slice(0, -1);
-
-			sendMessage(
-				nonfilechar_warn,
-				null,
-				2
-			);
-		}
-	});
-
-	div.config_input[0].addEventListener("focus", event => {
-		if (!schedule.name)
-			prompt_show();
-	});
-
-	div.config_input[0].addEventListener("focusout", event => {
-		// See if there's anything in the input.
-		if (div.config_input[0].value) {
-			let a = schedule.name; // old name.
-			let b = div.config_input[0].value; // new name.
-
-			// Break if same name.
-			if (a === b) return;
-
-			// See if the name is being used.
-			if (fs.existsSync("save\\" + b + ".json"))
-				// Prompt the user if they want to overwrite.
-				showDialog(
-					"'" + b + "' is being used by another " +
-					"schedule!",
-					["Overwrite", "Cancel"],
-					(event, i) => {
-						if (i)
-							// Change back to old name.
-							div.config_input[0].value = a;
-						else {
-							// Change to new name.
-							schedule.name = b;
-
-							// Rename.
-							fs.renameSync(
-								"save\\" + a + ".json",
-								"save\\" + b + ".json"
-							);
-
-							sendMessage(
-								"File renamed to '" + b + "'.",
-								null,
-								2
-							);
-						}
-
-						return 1;
-					}
-				);
-			else {
-				// Change to new name.
-				schedule.name = b;
-
-				// Rename.
-				fs.renameSync(
-					"save\\" + a + ".json",
-					"save\\" + b + ".json"
-				);
-
-				sendMessage(
-					"Successfully renamed to '" + b + "'.",
-					null,
-					2
-				);
-			}
-		} else
-			// Revert to previous name since user didn't put anything.
-			div.config_input[0].value = schedule.name;
-	});
-}
-
 // Academic year and term.
 {
-	div.config_input[1].addEventListener("focusout", event => {
-		let v = div.config_input[1].value;
+	div.config_input[0].addEventListener("focusout", event => {
+		let v = div.config_input[0].value;
 
 		// Only do something if there's actually a difference.
 		if (v && schedule.AYTerm !== v) {
-			schedule.AYTerm = v;
+			// See if the user has courses added.
+			if (Object.values(schedule.list).length)
 
-			// Only save proper schedules.
-			doSave();
+			schedule.AYTerm = v;
+			label.AYTerm.innerHTML = v; // Update the label.
+
+			file_save_check();
 		} else
 			// Set it back if something went wrong.
-			div.config_input[1].value = schedule.AYTerm;
+			div.config_input[0].value = schedule.AYTerm;
 
 		// Reveal all the options again.
 		let labels = div.config_dropdown.getElementsByTagName("label");
@@ -2075,7 +2308,7 @@ img.config.addEventListener("mousedown", event => {
 			delete schedule.autosearch;
 
 		// Save it.
-		doSave();
+		file_save_check();
 	});
 
 	// Auto-save.
@@ -2090,44 +2323,12 @@ img.config.addEventListener("mousedown", event => {
 			delete schedule.autosave;
 
 		// Save it.
-		doSave();
+		file_save_check();
 	});
 }
 
 div.config_img.addEventListener("click", config_close);
 div.config_dim.addEventListener("mousedown", config_close);
-
-div.config_input[2].addEventListener("click", event => {
-	if (div.config_input[2].getAttribute("lock") == null)
-		showDialog(
-			"This will permanently remove your schedule." +
-			" Are you really, really sure about this?",
-			["Yes", "No"],
-			(event, i) => {
-				if (!i) {
-					// Delete file.
-					fs.unlinkSync("save\\" + schedule.name + ".json");
-					// Send message.
-					sendMessage(
-						"Goodbye, '" + schedule.name + "' :(<br><br>" +
-						"Settings have been reverted back to default.",
-						null,
-						2
-					);
-					// Load a blank schedule.
-					loadSchedule(Object.assign({}, schedule_default));
-				}
-
-				return 1;
-			}
-		);
-});
-
-tooltipListener(
-	div.config_input[2],
-	"<label>You haven't saved this schedule.</label>",
-	() => div.config_input[2].getAttribute("lock") != null
-)
 
 tooltipListener(
 	img.config,
@@ -2166,6 +2367,108 @@ document.addEventListener("mousemove", event => {
 })
 
 
+//-- File handling. --/
+
+function file_save() {
+	// Copy the schedule.
+	let data = Object.assign({}, schedule);
+
+	// Update internal record for modification date.
+	data.modified = new Date();
+
+	// Get rid of the list since its directly pointing to real data.
+	data.list = {};
+
+	// Get the list manually.
+	for (let name in schedule.list) {
+		data.list[name] = Object.assign({}, schedule.list[name]);
+
+		// Delete unncessary data.
+		delete data.list[name].cards;
+		delete data.list[name].tr;
+		delete data.list[name].literal;
+	}
+
+	data = JSON.stringify(data, null, "	");
+
+	// See if it's a local application.
+	if (fs) {
+		if (schedule_path) {
+			// Save.
+			img.save.style.opacity = "";
+			img.save.style.pointerEvents = "";
+
+			fs.writeFile(
+				schedule_path,
+				data,
+				() => message_new("File saved.", null, 2)
+			);
+		} else
+			// Not yet saved. Show the prompt window.
+			prompt_show();
+	} else {
+		// Browser mode. Trigger a prompt.
+		let file = new Blob([data], {type: "application/json"});
+		let url = URL.createObjectURL(file);
+		let dummy = elem("a");
+		dummy.href = url;
+		dummy.download = schedule.AYTerm + ".json";
+
+		document.body.appendChild(dummy);
+		dummy.click();
+		document.body.removeChild(dummy);
+		window.URL.revokeObjectURL(url);
+	}
+}
+
+/**
+ * Properly assess if the application should reveal the save button or
+ * just auto-save it.
+**/
+function file_save_check() {
+	if (!fs || !schedule_path || !schedule.autosave) {
+		// Show the holy button of justice.
+		img.save.style.opacity = 1;
+		img.save.style.pointerEvents = "auto";
+	} else
+		// The user is no fun. Just auto-save it.
+		file_save();
+}
+
+/**
+ * Process the file. Must be a JSON, otherwise will return null.
+**/
+function file_load(file, callback) {
+	if (!file) return; // No file found.
+
+	let reader = new FileReader();
+
+	reader.onload = event => callback(sched_parse(
+		file.path,
+		event.target.result
+	));
+
+	reader.readAsText(file);
+}
+
+document.addEventListener("drop", event => {
+	event.stopPropagation();
+	event.preventDefault();
+
+	let file = event.dataTransfer.files[0]; // We only need 1.
+
+	if (file)
+		file_load(file, sched_load);
+});
+
+// Explicitly change the file dragging behavior.
+document.addEventListener("dragover", event => {
+	event.stopPropagation();
+	event.preventDefault();
+	event.dataTransfer.dropEffect = "copy";
+});
+
+
 //-- Create tooltips. --//
 
 // Search
@@ -2186,11 +2489,11 @@ document.addEventListener("mousemove", event => {
 
 //-- See if there's anything to load. --//
 
-{
+if (ipcRenderer) {
 	let v = ipcRenderer.sendSync("loaded");
 
 	if (v != -1) {
-		loadSchedule(getSched(v));
+		sched_load(sched_parse(v));
 
 		// Get rid of the search button emphasis.
 		if (div.help) {
