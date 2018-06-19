@@ -591,7 +591,7 @@ let scraper = {
 			if (ayterm === scraper.AYTerm || !scraper.AYTerm)
 				xml.open(
 					"GET",
-					"http://enroll.dlsu.edu.ph/dlsu/view_actual_count?" +
+					"https://cors.io/?https://enroll.dlsu.edu.ph/dlsu/view_actual_count?" +
 					"p_course_code=" + name
 				);
 			else if (fs) {
@@ -624,7 +624,7 @@ let scraper = {
 
 			xml.open(
 				"GET",
-				"http://enroll.dlsu.edu.ph/dlsu/view_actual_count"
+				"https://cors.io/?https://enroll.dlsu.edu.ph/dlsu/view_actual_count"
 			);
 		} else
 			// Current AYTerm is already known. Return that instead.
