@@ -1,20 +1,21 @@
 // Tricky stuff to see if it's being run by Electron.
 try {
-	require = require;
-
 	var path = require("path");
 	var fs = require("fs");
-	var {ipcRenderer} = require("electron");
-	fs = null;
+	var {shell} = require("electron");
 } catch(err) {
 	require = null;
 }
 
+// Where the data comes from. I take no credit from them.
+const dlsu_src = (!require ? "https://cors.io/?" : "") +
+	// We use 'cors.io' to bypass the security. Its legal, don't worry.
+	"https://enroll.dlsu.edu.ph/dlsu/view_actual_count";
 // Used to check if there's an unacceptable character for file names.
 const nonfilechar = /[\\/:*?"<>|]/;
 const nonfilechar_warn = "You cant use the following characters:" +
 	"<br>\\ / : * ? \" < > |";
-// Shortcuts.
+// Shortcuts
 const elem = document.createElement.bind(document),
 	body = document.body,
 	getId = document.getElementById.bind(document),
@@ -22,12 +23,12 @@ const elem = document.createElement.bind(document),
 	getClass = document.getElementsByClassName.bind(document);
 // Offset
 const day_pos = {
-	"M": 1,
-	"T": 2,
-	"W": 3,
-	"H": 4,
-	"F": 5,
-	"S": 6
+	M: 1,
+	T: 2,
+	W: 3,
+	H: 4,
+	F: 5,
+	S: 6
 };
 // The actual screen isn't exactly at (0, 0).
 const scroll_offset = 35;
@@ -54,8 +55,6 @@ const schedule_default = {
 let lang = "en";
 // A collection of all the messages the system has made via requests.
 let request_elm = {};
-// This is where all of the stuffs get saved.
-let savepath = "/";
 
 
 //-- Elements. --//
@@ -114,13 +113,6 @@ div.info_header = div.info.getElementsByTagName("header")[0];
 div.info_subtitle = div.info.getElementsByTagName("subtitle")[0];
 div.info_img = div.info.getElementsByTagName("img");
 
-// The file-open window.
-div.open = getId("open");
-div.open_dim = div.open.getElementsByTagName("dim")[0];
-div.open_div = div.open.getElementsByTagName("div")[0];
-div.open_img = div.open.getElementsByTagName("img");
-div.open_listbox = getId("listbox");
-
 // Preview container.
 div.preview = getId("preview").getElementsByTagName("div")[0];
 
@@ -172,15 +164,11 @@ let schedule_path;
 let enroll_target;
 // Currently viewed course.
 let course_scope;
-// Dumped texts of all the courses for easier searching.
-let course_dump = "";
 // Separator for each dumped text.
 let course_dump_sep = String.fromCharCode(0);
 // Phrases used for searching.
-let course_dump_pre =
-		course_dump_sep + "[^" + course_dump_sep + "]*",
-	course_dump_suf =
-		"[^" + course_dump_sep + "]*";
+let course_dump_pre = course_dump_sep + "[^" + course_dump_sep + "]*",
+	course_dump_suf = "[^" + course_dump_sep + "]*";
 
 
 //-- Essentials. Should not be manually changed. --//
@@ -233,8 +221,7 @@ let scraper = {
 	draw: (name, ayterm, slots) => {
 		// Add search text box recent list.
 		let entry = scraper.data[ayterm][name];
-		course_dump += course_dump_sep + name;
-
+		scraper.data[ayterm].dump += course_dump_sep + name;
 
 		//-- Create the 'word' element. --//
 
@@ -317,8 +304,8 @@ let scraper = {
 			td(day_str.length <= 2 ? day_str : "");
 			// Time.
 			td(
-				parseTime(slot.time[0]) + " - " +
-				parseTime(slot.time[0] + slot.time[1])
+				time_parse(slot.time[0]) + " - " +
+				time_parse(slot.time[0] + slot.time[1])
 			);
 			// Room.
 			td(slot.room);
@@ -333,19 +320,19 @@ let scraper = {
 				div.summary.style.transform = "";
 				div.summary.style.boxShadow = "";
 
-				setPreview(name, slot);
+				preview_set(name, slot);
 			});
 
 			tr.addEventListener("mouseleave", event => {
 				// Show the summary if has 1 course enrolled.
-				if (Object.values(schedule.list).length) {
+				if (Object.keys(schedule.list).length) {
 					div.summary.style.transform =
 						"translateX(-100%)";
 					div.summary.style.boxShadow =
 						"0 0 5px #000";
 				}
 
-				setPreview();
+				preview_set();
 			});
 
 			tr.addEventListener("mousedown", event => {
@@ -538,29 +525,41 @@ let scraper = {
 				// See if user only needs the AYTerm.
 				if (name === "AYTERM")
 					callback(v);
-				else if (ayterm && ayterm !== v) {
+				else if (ayterm && ayterm !== v)
 					// AYTerm doesn't match. Return a cached data.
 					callback(
 						scraper.data[ayterm] &&
 						scraper.data[ayterm][name] || {}
 					);
-				} else {
+				else {
 					// Scrape some data.
 					let slots;
-
-					// Create the entry for the current AYTerm.
-					if (!scraper.data[v])
-						scraper.data[v] = {};
 
 					// Try to retrieve any data.
 					slots = scraper.dress(this.response);
 
 					if (typeof(slots) === "object" &&
-						Object.values(slots).length) {
+						Object.keys(slots).length) {
+						// Create the entry for the current AYTerm.
+						if (!scraper.data[v])
+							scraper.data[v] = {dump: ""};
+
 						// Record the data.
-						scraper.data[v][name] = {
-							slots: slots
-						};
+						scraper.data[v][name] = {slots: slots};
+
+						// Cache data to local storage if possible.
+						if (require) {
+							if (!fs.existsSync("cache"))
+								fs.mkdirSync("cache");
+
+							if (!fs.existsSync("cache\\" + v))
+								fs.mkdirSync("cache\\" + v);
+
+							fs.writeFileSync(
+								"cache\\" + v + "\\" + name + ".json",
+								JSON.stringify(slots)
+							);
+						}
 
 						// Draw the elements.
 						scraper.draw(name, v, slots);
@@ -589,12 +588,8 @@ let scraper = {
 			   AYTerm. Still search if current AYTerm is unknown.
 			*/
 			if (ayterm === scraper.AYTerm || !scraper.AYTerm)
-				xml.open(
-					"GET",
-					"https://cors.io/?https://enroll.dlsu.edu.ph/dlsu/view_actual_count?" +
-					"p_course_code=" + name
-				);
-			else if (fs) {
+				xml.open("GET", dlsu_src + "?p_course_code=" + name);
+			else if (require) {
 				// We can still get things in the user's cache.
 				let slots = "cache\\" + ayterm + "\\" + name + ".json";
 
@@ -604,11 +599,11 @@ let scraper = {
 					if (!scraper.data[ayterm])
 						scraper.data[ayterm] = {};
 
-					scraper.data[ayterm][name] = {
-						slots: slots
-					};
+					scraper.data[ayterm][name] = {slots: slots};
 
 					scraper.draw(name, ayterm, slots);
+					// Re-check the input just incase.
+					search_input();
 
 					return callback(slots);
 				} catch(err) {
@@ -622,10 +617,7 @@ let scraper = {
 			// Get the current academic year and term.
 			name = "AYTERM";
 
-			xml.open(
-				"GET",
-				"https://cors.io/?https://enroll.dlsu.edu.ph/dlsu/view_actual_count"
-			);
+			xml.open("GET", dlsu_src);
 		} else
 			// Current AYTerm is already known. Return that instead.
 			return callback(scraper.ayterm);
@@ -666,7 +658,7 @@ const spook_list = [
  * Give them a proper SPOOK.
  * @param Integer flag - If 'non-false', will clear the SPOOK.
 **/
-function setSpook(flag) {
+function spook_set(flag) {
 	if (flag)
 		label.spooky.innerHTML = "";
 	else
@@ -747,11 +739,24 @@ function message_new(str, callback, lifetime, type) {
 }
 
 /**
+ * Get rid of the search button emphasis after the user clicks it.
+**/
+function help_rem() {
+	if (div.help) {
+		let elm = div.help;
+		elm.style.opacity = 0;
+		delete div.help;
+
+		setTimeout(() => elm.parentElement.removeChild(elm), 1000);
+	}
+}
+
+/**
  * Create a dialog window. This will be on top of everything (including
  * any previous dialog windows) except for the notification messages
  * on the bottom-right corner.
 **/
-function showDialog(txt, buttons, callback) {
+function dialog_show(txt, buttons, callback) {
 	let dialog = elem("div");
 	dialog.setAttribute("id", "dialog");
 	body.appendChild(dialog);
@@ -788,17 +793,12 @@ function showDialog(txt, buttons, callback) {
 				dialog.style.opacity = null;
 				dialog.style.pointerEvents = "none";
 
-				setTimeout(
-					() => body.removeChild(dialog),
-					1000
-				);
+				setTimeout(() => body.removeChild(dialog), 1000);
 			}
 		});
 	}
 
-	setTimeout(() => {
-		dialog.style.opacity = 1;
-	}, 5);
+	setTimeout(() => dialog.style.opacity = 1, 5);
 }
 
 /**
@@ -806,7 +806,7 @@ function showDialog(txt, buttons, callback) {
  * @param Integer v - The seconds.
  * @return String - Seconds converted to string.
 **/
-function parseTime(v) {
+function time_parse(v) {
 	return ("00" + Math.trunc(v/60)).slice(-2) +
 		("00" + v%60).slice(-2);
 }
@@ -879,7 +879,12 @@ function prompt_show() {
 	div.prompt_input.focus();
 }
 
-function prompt_save_func(filename) {
+/**
+ * The last function to be called to properly save a file. This is not
+ * used by browser version.
+ * @param String filename - The name of the file (excluding the extension).
+**/
+function prompt_save_fn(filename) {
 	schedule_path = location.pathname;
 	schedule_path = schedule_path.slice(
 		1,
@@ -896,7 +901,16 @@ function prompt_save_func(filename) {
 	schedule.created = new Date();
 
 	file_save();
-	message_new("Schedule will now automatically save.", null, 3);
+	message_new(
+		"Schedule will now automatically save.<br>" +
+		"Click to open folder.",
+		() => {
+			shell.openItem(__dirname + "\\save");
+
+			return 1;
+		},
+		3
+	);
 
 	// Hide the save button.
 	img.save.style.opacity = "";
@@ -908,23 +922,23 @@ function prompt_save() {
 		div.prompt_input.placeholder;
 
 	if (fs.existsSync("save\\" + filename + ".json"))
-		showDialog(
+		dialog_show(
 			"Another schedule with the same name already exists!",
 			["Overwrite", "Cancel"],
 			(event, choice) => {
 				if (!choice)
-					prompt_save_func(filename);
+					prompt_save_fn(filename);
 
 				return true;
 			}
 		);
 	else
-		prompt_save_func(filename);
+		prompt_save_fn(filename);
 }
 
 img.save.addEventListener("click", file_save);
 
-tooltipListener(
+tooltip_new(
 	img.save,
 	"<label>Save Schedule</label>",
 	null,
@@ -946,11 +960,11 @@ div.prompt_input.addEventListener("input", event => {
 });
 
 div.prompt_input.addEventListener("keydown", event => {
-	if (event.key === "Enter")
+	if (event.code === "Enter")
 		prompt_save();
 });
 
-tooltipListener(
+tooltip_new(
 	div.prompt_img[0],
 	"<label>Save</label>",
 	null,
@@ -971,7 +985,7 @@ div.prompt_img[1].addEventListener("click", prompt_hide);
 div.prompt.getElementsByTagName("dim")[0]
 	.addEventListener("mousedown", prompt_hide);
 
-tooltipListener(
+tooltip_new(
 	div.prompt_img[1],
 	"<label>Cancel</label>",
 	null,
@@ -1015,23 +1029,17 @@ function sched_parse(txt) { try {
 			// Formalize data.
 			list[i].literal = list[i].section + " " +
 				list[i].day.join("") + " " +
-				parseTime(list[i].time[0]) + " - " +
-				parseTime(list[i].time[0] + list[i].time[1]) +
+				time_parse(list[i].time[0]) + " - " +
+				time_parse(list[i].time[0] + list[i].time[1]) +
 				" " + list[i].room;
 
 	return sched;
 } catch(err) {} }
 
 /**
- * Load a saved schedule. This will also update the schedule. This can
- * also be used for loading a blank schedule to reset everything to
- * default.
- * @param Object sched - the schedule.
+ * Removes all the added courses in the schedule.
 **/
-function sched_load(sched, path) {
-	if (!sched) return; // No bamboozling pls.
-
-	// Get rid of the previous schedule.
+function sched_clear() {
 	for (let name in schedule.list) {
 		// Remove summary sidebar elements.
 		div.summary_tbody.removeChild(schedule.list[name].tr);
@@ -1039,7 +1047,24 @@ function sched_load(sched, path) {
 		// Remove cards.
 		for (let i in schedule.list[name].cards)
 			div.deck.removeChild(schedule.list[name].cards[i]);
+
+		delete schedule.list[name];
 	}
+}
+
+/**
+ * Load a saved schedule. This will also update the schedule. This can
+ * also be used for loading a blank schedule to reset everything to
+ * default.
+ * @param Object sched - the schedule.
+ * @param String filepath - If being run by Electron API, the whole path
+ * to the file, otherwise it will only be the file's name and extension.
+**/
+function sched_load(sched, filepath) {
+	if (!sched) return; // No bamboozling pls.
+
+	// Get rid of the previous schedule.
+	sched_clear();
 
 	// Create the visual stuffs (cards and sidebar elements).
 	let list = sched.list;
@@ -1067,13 +1092,13 @@ function sched_load(sched, path) {
 			scroll_max = slot.time[0];
 
 		if (!i) {
-			setSpook(1); // lolol
+			spook_set(1); // lolol
 
 			i = 1;
 		}
 	}
 
-	if (!i) setSpook(); // lolol
+	if (!i) spook_set(); // lolol
 
 	// Replace.
 	schedule = sched;
@@ -1092,73 +1117,57 @@ function sched_load(sched, path) {
 	else
 		div.config_check[1].removeAttribute("active");
 
-	// Message user.
-	if (path) {
-		// Get the name.
-		let i = path.match(/.+\\/)[0].length;
+	// Set file path.
+	schedule_path = filepath;
 
-		message_new("Loaded '" + sched.name + "'.", null, 2);
+	// Message user.
+	if (filepath) {
+		// Get the name.
+		let v = filepath.substr(filepath.match(/.+\\/)[0].length);
+
+		if (v.indexOf(".") != -1)
+			v = v.match(/.+\./)[0].slice(0, -1);
+
+		message_new("Loaded '" + v + "'.", null, 2);
 	}
 
-	scrollTo(0); // Scroll to top.
+	scroll_to(0); // Scroll to top.
+
+	return 1;
 }
 
 
 //-- Load button. --//
 
-div.load_input.addEventListener("change", event => file_load(
-	event.target.files[0],
-	sched => {
-		if (sched)
-			sched_load(sched);
-		else
-			message_new(
-				"We can't seem to load that file, sorry!",
-				null,
-				2,
-				2
-			);
-	}
-));
+const load_fn = file => file_load(file, (sched, filepath) => sched &&
+	sched_load(sched, filepath) || message_new(
+		"We can't seem to load that file, sorry!",
+		null,
+		2,
+		2
+	)
+);
 
-div.load_img.addEventListener("mousedown", event => {
-	// Redirect the img to the input.
-	if (event.button == 0)
-		div.load_input.click();
-});
+div.load_input.addEventListener("change", event =>
+	load_fn(event.target.files[0])
+);
 
-tooltipListener(
+div.load_img.addEventListener("mousedown", event => 
+	event.button == 0 && div.load_input.click()
+);
+
+tooltip_new(
 	div.load_img,
 	"<label>Open/New Schedule</label>",
 	null,
 	1
 );
 
-// New window button.
-div.open_img[0].addEventListener("click", event =>
-	ipcRenderer.send("window")
-);
-
-tooltipListener(div.open_img[0], "<label>New Window</label>", null, 1);
-
-// Close button.
-div.open_img[1].addEventListener("click", event => {
-	div.open.style.pointerEvents = "";
-	div.open.style.opacity = "";
-});
-
-tooltipListener(div.open_img[1], "<label>Close</label>", null, 1);
-
-div.open_dim.addEventListener("mousedown", event => {
-	div.open.style.pointerEvents = "";
-	div.open.style.opacity = "";
-});
-
 /**
  * Check if the two slots have at least 1 schedule with the same
  * day.
 **/
-function matchDay(a, b) {
+function match_day(a, b) {
 	for (let i in a)
 		if (b.indexOf(a[i]) != -1)
 			return true;
@@ -1181,7 +1190,7 @@ function hasConflict(name, slot) {
 	for (let i in schedule.list) {
 		let v = schedule.list[i];
 
-		if (v && matchDay(slot.day, v.day)) {
+		if (v && match_day(slot.day, v.day)) {
 			if (slot.time[0] <= v.time[0]) {
 				if (v.time[0] - slot.time[0] < slot.time[1])
 					return true;
@@ -1197,7 +1206,7 @@ function hasConflict(name, slot) {
 
 //-- Preview generation. --//
 
-function setPreview(name, slot) {
+function preview_set(name, slot) {
 	if (slot) {
 		let conflict = hasConflict(name, slot);
 		let child = div.preview.childNodes;
@@ -1224,7 +1233,7 @@ function setPreview(name, slot) {
 				child[i].style.display = "none";
 		}
 
-		scrollTo(
+		scroll_to(
 			(slot.time[0] + slot.time[1]/2 + // Card size.
 			35/2 + 5)/0.6 - // Header size (the weekday display).
 			innerHeight/2, // Screen size.
@@ -1242,7 +1251,7 @@ function setPreview(name, slot) {
  * @param Number delta - the amount of pixels added. Negative value
  * will scroll upwards.
 **/
-function scrollAdd(delta) {
+function scroll_add(delta) {
 	if (scroll_min != null) {
 		scroll = Math.max(
 			scroll_min/0.6 - innerHeight + 40,
@@ -1259,7 +1268,7 @@ function scrollAdd(delta) {
  * @param Number y - the point at which the screen will be moved to.
  * 
 **/
-function scrollTo(y, force) {
+function scroll_to(y, force) {
 	if (scroll_min != null) {
 		scroll = force ? y : Math.max(
 			scroll_min/0.6 - innerHeight + 40,
@@ -1276,7 +1285,7 @@ function scrollTo(y, force) {
  * Move the tooltip container.
  * @param Object event - The event.
 **/
-function tooltipMove(event) {
+function tooltip_move(event) {
 	if (div.tooltip.style.display === "block") {
 		let x = div.tooltip.clientWidth,
 			y = div.tooltip.clientHeight;
@@ -1292,7 +1301,7 @@ function tooltipMove(event) {
 	}
 }
 
-document.addEventListener("mousemove", tooltipMove);
+document.addEventListener("mousemove", tooltip_move);
 
 /**
  * Make it so that the element sets the tooltip's message when it's
@@ -1306,14 +1315,14 @@ document.addEventListener("mousemove", tooltipMove);
  * @param Integer flag - 0 = None; 1 = Hide on focus or mouse down.
  * @return Object elm.
 **/
-function tooltipListener(elm, value, cond, flag) {
+function tooltip_new(elm, value, cond, flag) {
 	elm.addEventListener("mouseenter", event => {
 		if (!cond || cond(elm)) {
 			tooltip = elm;
 			div.tooltip.innerHTML = value;
 			div.tooltip.style.display = "block";
 
-			tooltipMove(event);
+			tooltip_move(event);
 		}
 	});
 
@@ -1342,6 +1351,26 @@ function tooltipListener(elm, value, cond, flag) {
 //-- Course functions. --//
 
 /**
+ * Hides AYTerm 'a' courses and shows AYTerm 'b' courses.
+ * @param String a - AYTerm courses to be hidden.
+ * @param String b - AYTerm courses to be shown.
+**/
+function course_set(a, b) {
+	let list = scraper.data[a];
+	course_scope = null;
+	div.search_input.value = "";
+	div.dump.style.display = "";
+
+	if (list) for (let k in list) if (typeof(list[k]) === "object")
+		list[k].table.style.display = list[k].word.style.display = "none";
+
+	list = scraper.data[b];
+
+	if (list) for (let k in list) if (typeof(list[k]) === "object")
+		list[k].word.style.display = "";
+}
+
+/**
  * Attempt to add the slot to the schedule. This will do nothing
  * if there's a conflict.
  * @param String name - the name of the course. Must be all caps.
@@ -1351,7 +1380,7 @@ function tooltipListener(elm, value, cond, flag) {
 **/
 function course_add(name, id, slot) {
 	if (!hasConflict(name, slot)) {
-		setSpook(1); // lolol
+		spook_set(1); // lolol
 
 		/* Make an entry for the slot. Note that the slot is
 		   duplicated, meaning it does not point to the actual
@@ -1366,7 +1395,7 @@ function course_add(name, id, slot) {
 		schedule.list[name].tr = summary_new(name, id, slot);
 
 		// Scroll to the card's location.
-		scrollTo(
+		scroll_to(
 			(slot.time[0] + slot.time[1]/2 + // Card size.
 			35/2 + 5)/0.6 - // Header size (the weekday display).
 			innerHeight/2 // Screen size.
@@ -1420,7 +1449,7 @@ function course_rem(name) {
 		delete schedule.list[name];
 
 		// See if there are no slots left in the schedule.
-		if (!Object.values(schedule.list).length) {
+		if (!Object.keys(schedule.list).length) {
 			// Hide the save button.
 			img.save.style.opacity = "";
 			img.save.style.pointerEvents = "";
@@ -1429,7 +1458,7 @@ function course_rem(name) {
 			div.summary.style.transform = "";
 			div.summary.style.boxShadow = "";
 
-			setSpook(); // lolol
+			spook_set(); // lolol
 		}
 
 		// Save it.
@@ -1467,8 +1496,8 @@ function info_show(name, id, slot) {
 		Section: slot.section,
 		Days: slot.day.join(slot.day[0].length > 1 ? "<br>" : ""),
 		Room: slot.room,
-		Time: parseTime(slot.time[0]) + " - " +
-			parseTime(slot.time[0] + slot.time[1]),
+		Time: time_parse(slot.time[0]) + " - " +
+			time_parse(slot.time[0] + slot.time[1]),
 		Professor: slot.professor || "",
 		Enrolled: slot.enrolled + " of " + slot.cap + " enrolled"
 	};
@@ -1516,7 +1545,7 @@ function info_close() {
 
 // Close button.
 div.info_img[0].addEventListener("click", info_close);
-tooltipListener(div.info_img[0], "<label>Close</label>", null, 1);
+tooltip_new(div.info_img[0], "<label>Close</label>", null, 1);
 
 // Clicking outside the info window.
 info.getElementsByTagName("dim")[0]
@@ -1555,7 +1584,7 @@ div.info_img[1].addEventListener("click", () => {
 });
 
 // Tooltip for enrolling.
-tooltipListener(div.info_img[1],
+tooltip_new(div.info_img[1],
 	"<label>Add to schedule.</label>",
 	() => {
 		return !div.info_img[1].getAttribute("drop") &&
@@ -1565,16 +1594,15 @@ tooltipListener(div.info_img[1],
 );
 
 // Tooltip when there is a conflict.
-tooltipListener(div.info_img[1],
-	"<label>This has a conflict" +
-	" with another slot.</label>",
+tooltip_new(div.info_img[1],
+	"<label>This has a conflict with another slot.</label>",
 	() => {
 		return !div.info_img[1].getAttribute("enabled");
 	}
 );
 
 // Tooltip for dropping.
-tooltipListener(div.info_img[1],
+tooltip_new(div.info_img[1],
 	"<label>Remove from schedule.</label>",
 	() => {
 		return div.info_img[1].getAttribute("drop");
@@ -1675,7 +1703,7 @@ function card_new(name, id, slot) {
 			card.style.top = y*100 + "%";
 			card.style.height = "calc(" + h*100 + "% - 5px)";
 
-			tooltipListener(cap, cap_tooltip);
+			tooltip_new(cap, cap_tooltip);
 
 			card.addEventListener(
 				"click",
@@ -1738,7 +1766,7 @@ function search_input() {
 
 	// Check if the user is trying to check via slot ID.
 	if (!isNaN(Number(txt[0]))) for (let name in list)
-		if (list[name].slots[txt[0]]) {
+		if (typeof(list[name]) === "object" && list[name].slots[txt[0]]) {
 			// Redirect to the course's name with the ID.
 			txt = [name, txt[0]];
 
@@ -1830,14 +1858,14 @@ function search_input() {
 	// Make 'recently-searched' view visible.
 	div.dump.style.display = "block";
 
-	/* Find matches in the 'course_dump', which is just a long
+	/* Find matches in the scraper's 'dumped' entry, which is just a long
 	   string containing all the searched course names.
 	*/
-	let res = course_dump.match(
+	let res = list.dump.match(
 		new RegExp(course_dump_pre + txt[0] + course_dump_suf, "g")
 	);
 
-	for (let name in list) {
+	for (let name in list) if (typeof(list[name]) === "object") {
 		if (res !== null &&
 			res.indexOf(course_dump_sep + name) > -1) {
 			// Found a match. Make it visible.
@@ -1850,186 +1878,20 @@ function search_input() {
 	}
 }
 
-function course_store(name, slots) {
-	// Make sure there's actually something to receive.
-	if (typeof(slots) !== "number" && Object.values(slots).length) {
-		// Add search text box recent list.
-		course_dump += course_dump_sep + name;
 
-		// Create the 'word' that auto-completes the search textbox.
-		let word = elem("label");
-		word.innerHTML = "#" + name + " ";
+//-- Search clear button. --//
 
-		word.setAttribute("class", "dump");
-		word.addEventListener("mousedown", event => {
-			hit = word;
+img.search.addEventListener("mousedown", event => {
+	hit = img.search;
 
-			if (event.button == 0) {
-				div.search_input.value = name;
-
-				div.dump.insertBefore(word, div.dump.childNodes[0]);
-				search_input();
-			}
-		});
-
-
-		//-- Store data. --//
-
-		scraper.data[schedule.AYTerm][name] = {
-			/* The element that will be appended to the
-			   recently-searched view.
-			*/
-			word: word,
-			// The element for the course view.
-			table: elem("table"),
-			slots: slots
-		};
-		entry = scraper.data[schedule.AYTerm][name];
-
-		// Hide the table by default.
-		entry.table.style.display = "none";
-
-		entry.table.setAttribute("class", "course");
-		div.course_table.appendChild(entry.table);
-
-
-		//-- Iterate through each slot to setup the table. --//
-
-		for (let id in slots) {
-			let slot = slots[id];
-			let tr = elem("tr");
-			let full = slot.enrolled >= slot.cap;
-			let literal = "";
-
-			if (full)
-				// Set to 'full' state to change appearance.
-				tr.setAttribute("full", 1);
-
-			entry.table.appendChild(tr);
-
-
-			// See if the user has enrolled a slot from this course.
-			let v = schedule.list[name];
-
-			if (v && v.id == id) {
-				// Update everything!
-				for (let i in slot) if (i != "tr")
-					v[i] = slot[i];
-
-				// Replace the cards.
-				for (let i in v.cards)
-					div.deck.removeChild(v.cards[i]);
-
-				v.cards = card_new(name, id, v);
-
-				// Replace the summary sidebar entry.
-				div.summary_tbody.removeChild(v.tr);
-				v.tr = summary_new(name, id, v);
-
-				message_new("Updated '" + name + "'.", null, 2);
-			}
-
-
-			// Write down some of the data into the table.
-			function td(label, desc) {
-				let td = elem("td");
-				td.innerHTML = label;
-				literal += label + " ";
-
-				tr.appendChild(td);
-
-				return td;
-			}
-
-			// Section.
-			td(slot.section).setAttribute("bold", 1);
-			// Day/s. Only show 2 characters since it wont fit.
-			let day_str = slot.day.join("");
-			td(day_str.length <= 2 ? day_str : "");
-			// Time.
-			td(
-				parseTime(slot.time[0]) + " - " +
-				parseTime(slot.time[0] + slot.time[1])
-			);
-			// Room.
-			td(slot.room);
-
-			// Store the element, which allows us to manipulate later.
-			slot.tr = tr;
-			// Trim off the extra space at the end.
-			slot.literal = literal.slice(0, -1);
-
-			tr.addEventListener("mouseenter", event => {
-				// Hide the summary sidebar.
-				div.summary.style.transform = "";
-				div.summary.style.boxShadow = "";
-
-				setPreview(name, slot);
-			});
-
-			tr.addEventListener("mouseleave", event => {
-				// Show the summary if has 1 course enrolled.
-				if (Object.values(schedule.list).length) {
-					div.summary.style.transform =
-						"translateX(-100%)";
-					div.summary.style.boxShadow =
-						"0 0 5px #000";
-				}
-
-				setPreview();
-			});
-
-			tr.addEventListener("mousedown", event => {
-				if (event.button == 0)
-					info_show(name, id, slots[id]);
-				else if (event.button == 2)
-					course_add(name, id, slots[id]);
-			});
-		}
-
-		// Send a message to the user.
-		if (request_elm[name])
-			message_new(
-				"'" + name + "' data received.", null, 2
-			);
-	} else if (request_elm[name])
-		if (slots == -3)
-			message_new(
-				"No slots were being offered for '" + name + "'. in " +
-				"that academic year and term.",
-				null,
-				2
-			);
-		else if (slots == -1)
-			message_new(
-				"Request timed out for '" + name + "'.<br><br>" +
-				"Maybe try again later?",
-				null,
-				2
-			);
-		else
-			message_new(
-				"Could not receive data for '" + name + "'.", null, 2
-			);
-
-	if (request_elm[name]) {
-		// Close the 'requesting for...' message.
-		request_elm[name][1]();
-
-		delete request_elm[name];
-	}
-
-	if (entry) {
-		// Put the course's 'recent' element at the top.
-		div.dump.insertBefore(entry.word, div.dump.childNodes[0]);
-
-		// Re-show the table if it was selected before.
-		if (course_scope && course_scope[0] == name)
-			entry.table.style.display = "";
+	if (event.button == 0) {
+		div.search_input.value = "";
 
 		search_input();
 	}
-}
+});
+
+tooltip_new(img.search, "<label>Clear</label>");
 
 
 //-- Search button. --//
@@ -2043,24 +1905,12 @@ div.search_input.addEventListener("focus", event => {
 	img.search.setAttribute("src", "assets/img/close.png");
 
 	// Show the summary if there is at least 1 course enrolled.
-	if (Object.values(schedule.list).length) {
+	if (Object.keys(schedule.list).length) {
 		div.summary.style.transform = "translateX(-100%)";
 		div.summary.style.boxShadow = "0 0 5px #000";
 	}
 
-	/* Get rid of the search button emphasis after the user
-	   clicks it.
-	*/
-	if (div.help) {
-		let elm = div.help;
-		elm.style.opacity = 0;
-
-		setTimeout(
-			() => elm.parentElement.removeChild(elm), 1000
-		);
-
-		delete div.help;
-	}
+	help_rem(); // Remove the help screen overlay.
 });
 
 div.search_input.addEventListener("focusout", event => {
@@ -2072,14 +1922,14 @@ div.search_input.addEventListener("focusout", event => {
 		*/
 		hit = null;
 
-		div.search_input.focus(); // Persist focus.
+		setTimeout(() => div.search_input.focus()); // Persist focus.
 	} else {
 		div.course.style.opacity = 0;
 		div.course.style.pointerEvents = "";
 		label.spooky.style.opacity = 0.3;
 
-		if (!Object.values(schedule.list).length)
-			setSpook();
+		if (!Object.keys(schedule.list).length)
+			spook_set();
 
 		img.search.setAttribute("src", "assets/img/search.png");
 		img.search.style.pointerEvents = "";
@@ -2091,10 +1941,16 @@ div.search_input.addEventListener("input", search_input);
 div.search_input.addEventListener("keyup", event => {
 	let name = div.search_input.value.toUpperCase();
 
-	if (event.key === "Enter" &&
-		schedule.AYTerm && // Do not request if AYTerm isn't set.
+	if (event.code === "Enter" &&
 		name.length > 0 && // Must have an entry.
 		name.search(/\s/) == -1) { // No spaces.
+
+		if (!schedule.AYTerm)
+			// Do not request if AYTerm isn't set.
+			return message_new(
+				"We can't search without the academic year and term...",
+				null, 2, 1
+			);
 
 		let msg = message_new(
 			"Requesting data for '" + name + "'...",
@@ -2105,7 +1961,7 @@ div.search_input.addEventListener("keyup", event => {
 			msg[1]();
 
 			if (typeof(slots) === "object")
-				if (Object.values(slots).length)
+				if (Object.keys(slots).length)
 					message_new("'" + name + "' data received.", null, 2);
 				else
 					message_new(
@@ -2121,18 +1977,6 @@ div.search_input.addEventListener("keyup", event => {
 		});
 	}
 });
-
-img.search.addEventListener("mousedown", event => {
-	hit = img.search;
-
-	if (event.button == 0) {
-		div.search_input.value = "";
-
-		search_input();
-	}
-});
-
-tooltipListener(img.search, "<label>Clear</label>");
 
 
 //-- Configuration window. --//
@@ -2245,7 +2089,7 @@ function dropdown_set(dropdown, options) {
 	let warns = getTag("warn");
 
 	for (let i = 0; i < warns.length; i++)
-		tooltipListener(
+		tooltip_new(
 			warns[i],
 			"<label>" + warns[i].getAttribute("value") + "</label>",
 			v => {
@@ -2279,13 +2123,36 @@ img.config.addEventListener("mousedown", event => {
 
 		// Only do something if there's actually a difference.
 		if (v && schedule.AYTerm !== v) {
-			// See if the user has courses added.
-			if (Object.values(schedule.list).length)
+			// Warn the user if they have courses added in the schedule.
+			if (Object.keys(schedule.list).length) dialog_show(
+				"Changing the academic year and term will remove all " +
+				"the courses you've added to your schedule.<br>Do you " +
+				"want to continue?",
+				["Yes", "No"],
+				(event, choice) => {
+					if (!choice) {
+						// Hide previous AYTerm courses.
+						course_set(schedule.AYTerm, v);
 
-			schedule.AYTerm = v;
-			label.AYTerm.innerHTML = v; // Update the label.
+						// Set new AYTerm.
+						schedule.AYTerm = label.AYTerm.innerHTML = v;
 
-			file_save_check();
+						sched_clear();
+						file_save_check();
+					} else
+						div.config_input[0].value = schedule.AYTerm;
+
+					return 1;
+				}
+			); else {
+				// Hide previous AYTerm courses.
+				course_set(schedule.AYTerm, v);
+
+				schedule.AYTerm = v;
+				label.AYTerm.innerHTML = v; // Update the label.
+
+				file_save_check();
+			}
 		} else
 			// Set it back if something went wrong.
 			div.config_input[0].value = schedule.AYTerm;
@@ -2330,7 +2197,7 @@ img.config.addEventListener("mousedown", event => {
 div.config_img.addEventListener("click", config_close);
 div.config_dim.addEventListener("mousedown", config_close);
 
-tooltipListener(
+tooltip_new(
 	img.config,
 	"<label>Configure Preference</label>",
 	null,
@@ -2340,10 +2207,14 @@ tooltipListener(
 
 //-- Mouse/key events. --//
 
-document.addEventListener("mousewheel", event => {
+document.addEventListener("wheel", event => {
 	if (event.target.tagName === "CARD" ||
 		event.target.tagName === "BODY") {
-		scrollAdd(event.deltaY);
+		scroll_add(
+			// Firefox.
+			typeof InstallTrigger !== 'undefined' ?
+			event.deltaY*20 : event.deltaY
+		);
 	}
 });
 
@@ -2362,7 +2233,7 @@ document.addEventListener("mouseup", event => {
 
 document.addEventListener("mousemove", event => {
 	if (drag) {
-		scrollAdd(-event.movementY);
+		scroll_add(-event.movementY);
 	}
 })
 
@@ -2392,7 +2263,7 @@ function file_save() {
 	data = JSON.stringify(data, null, "	");
 
 	// See if it's a local application.
-	if (fs) {
+	if (require) {
 		if (schedule_path) {
 			// Save.
 			img.save.style.opacity = "";
@@ -2401,7 +2272,16 @@ function file_save() {
 			fs.writeFile(
 				schedule_path,
 				data,
-				() => message_new("File saved.", null, 2)
+				() => message_new(
+					"File saved.<br>" +
+					"Click to open folder.",
+					() => {
+						shell.openItem(__dirname + "\\save");
+
+						return 1;
+					},
+					3
+				)
 			);
 		} else
 			// Not yet saved. Show the prompt window.
@@ -2436,7 +2316,9 @@ function file_save_check() {
 }
 
 /**
- * Process the file. Must be a JSON, otherwise will return null.
+ * Process the file. Must be a JSON, otherwise will do nothing. It will
+ * return the schedule as an object and the file's path if it's being
+ * run by Electron API.
 **/
 function file_load(file, callback) {
 	if (!file) return; // No file found.
@@ -2444,9 +2326,8 @@ function file_load(file, callback) {
 	let reader = new FileReader();
 
 	reader.onload = event => callback(sched_parse(
-		file.path,
 		event.target.result
-	));
+	), file.path);
 
 	reader.readAsText(file);
 }
@@ -2454,11 +2335,8 @@ function file_load(file, callback) {
 document.addEventListener("drop", event => {
 	event.stopPropagation();
 	event.preventDefault();
-
-	let file = event.dataTransfer.files[0]; // We only need 1.
-
-	if (file)
-		file_load(file, sched_load);
+	load_fn(event.dataTransfer.files[0]);
+	help_rem();
 });
 
 // Explicitly change the file dragging behavior.
@@ -2476,7 +2354,7 @@ document.addEventListener("dragover", event => {
 	let elm = getId("search")
 		.getElementsByTagName("input")[0];
 
-	tooltipListener(
+	tooltip_new(
 		elm,
 		"<label>Search</label>",
 		() => {
@@ -2484,27 +2362,4 @@ document.addEventListener("dragover", event => {
 		},
 		1
 	);
-}
-
-
-//-- See if there's anything to load. --//
-
-if (ipcRenderer) {
-	let v = ipcRenderer.sendSync("loaded");
-
-	if (v != -1) {
-		sched_load(sched_parse(v));
-
-		// Get rid of the search button emphasis.
-		if (div.help) {
-			let elm = div.help;
-			elm.style.opacity = 0;
-
-			setTimeout(
-				() => elm.parentElement.removeChild(elm), 1000
-			);
-
-			delete div.help;
-		}
-	}
 }
