@@ -849,6 +849,12 @@ if (schedule.AYTerm) {
 		div.config_input[0].value = ayterm;
 
 		config_AYTerm(ayterm);
+		message_new(
+			"Retrieved current academic year and term.<br>" +
+			"'" + ayterm + "'",
+			null,
+			2
+		)
 	});
 }
 
