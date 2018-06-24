@@ -1,7 +1,7 @@
 # Kunoichi
 A simple simulator to help you create the ultimate DLSU schedule!
 ## Get Started
-![Browser](https://llyme.github.io/Kunoichi/)
+[Online](https://llyme.github.io/Kunoichi)
 
 Windows - ![32-bit](https://github.com/Llyme/Kunoichi/releases/download/v1.3-pre/Kunoichi.v1.3-pre.x86.zip), ![64-bit](https://github.com/Llyme/Kunoichi/releases/download/v1.3-pre/Kunoichi.v1.3-pre.x64.zip)
 
